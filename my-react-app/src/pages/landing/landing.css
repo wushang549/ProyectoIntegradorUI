@@ -1,0 +1,14 @@
+.gh-page {
+  min-height: 100vh;
+  background: #ffffff;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: #111827;
+}
+
+.gh-main {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 30px 15px;
+  box-sizing: border-box;
+}
