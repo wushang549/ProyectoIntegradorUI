@@ -1,6 +1,7 @@
 .sp-section {
   padding: 52px 24px;
-  background: #ffffff;
+  background: rgba(11, 15, 25, 0.02);
+
 }
 
 .sp-container {
@@ -23,7 +24,7 @@
 
 .sp-title {
   margin: 0;
-  font-size: 46px;
+  font-size: 40px;
   font-weight: 900;
   color: #0b0f19;
   letter-spacing: -0.4px;

@@ -1,0 +1,103 @@
+.ft-section {
+  padding: 96px 24px;
+  background: #ffffff;
+}
+
+.ft-container {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.ft-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+
+.ft-title {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  color: #0b0f19;
+  margin: 0;
+}
+
+.ft-subtitle {
+  margin-top: 12px;
+  font-size: 22px;
+  font-weight: 600;
+  color: rgba(11, 15, 25, 0.6);
+}
+
+.ft-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.ft-card {
+  border-radius: 18px;
+  border: 1px solid rgba(11, 15, 25, 0.08);
+  background: #ffffff;
+  padding: 22px 22px 24px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ft-card:hover {
+  border-color: rgba(14, 126, 255, 0.3);
+  box-shadow: 0 12px 24px rgba(11, 15, 25, 0.06);
+}
+
+.ft-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(14, 126, 255, 0.1);
+  color: #0e7eff;
+  margin-bottom: 16px;
+}
+
+.ft-card-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #0b0f19;
+  letter-spacing: -0.2px;
+}
+
+.ft-card-desc {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.65;
+  color: rgba(11, 15, 25, 0.65);
+  font-weight: 500;
+}
+
+@media (max-width: 980px) {
+  .ft-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .ft-section {
+    padding: 40px 24px;
+  }
+
+  .ft-title {
+    font-size: 28px;
+  }
+
+  .ft-subtitle {
+    font-size: 16px;
+  }
+
+  .ft-card-title {
+    font-size: 18px;
+  }
+
+  .ft-card-desc {
+    font-size: 15px;
+  }
+}

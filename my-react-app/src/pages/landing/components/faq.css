@@ -1,6 +1,7 @@
 .faq-section {
-  padding: 96px 24px;
-  background: #ffffff;
+  padding: 26px 24px;
+  padding-bottom: 150px;
+  background: rgba(11, 15, 25, 0.02);
 }
 
 .faq-container {
@@ -14,7 +15,7 @@
 }
 
 .faq-title {
-  font-size: 46px;
+  font-size: 40px;
   font-weight: 800;
   letter-spacing: -0.8px;
   color: #0b0f19;
@@ -57,7 +58,8 @@
 }
 
 .faq-question:hover {
-  background: rgba(11, 15, 25, 0.03);
+  border-radius: 14px;
+  border: 1px solid black;
 }
 
 .faq-icon {

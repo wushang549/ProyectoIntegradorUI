@@ -2,7 +2,9 @@ import SiteHeader from '../../components/siteheader/siteheader'
 import Hero from './components/hero'
 import { SocialProof } from './components/social-proof'
 import FAQ from './components/faq'
+import { ExampleSection } from './components/example-section'
 import HowItWorks from './components/how-it-works'
+import { Features } from './components/features'
 
 export default function Landing() {
   return (
@@ -11,8 +13,9 @@ export default function Landing() {
       <main className="lp-main">
         <Hero />
         <SocialProof />
+        <Features />
         <HowItWorks />
-        <section id="how-it-works"></section>
+        <ExampleSection />
         <FAQ />
       </main>
     </div>
