@@ -211,6 +211,36 @@
   color: #111827;
   font-weight: 650;
 }
+.gl-logo-login {
+    width: 40px;
+    height: 40px;
+    margin-top: -10px;
+  }
+.tittle-logo {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+  }
+  .gl-logo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.gl-logo-link:visited {
+  color: inherit;
+}
+
+.gl-logo-link:hover {
+  text-decoration: none;
+}
+
+.gl-logo-link:focus-visible {
+  outline: none;
+}
 
 /* ===== Mobile ===== */
 @media (max-width: 560px) {
@@ -227,4 +257,7 @@
   .gl-footer {
     font-size: 16px;
   }
+
+
+
 }
