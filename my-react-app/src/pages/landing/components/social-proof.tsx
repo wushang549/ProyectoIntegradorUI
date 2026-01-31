@@ -10,7 +10,7 @@ const testimonials = [
     company: 'Moretti Restaurant Group',
     avatar: 'JM',
     rating: 5,
-    industry: 'Restaurant Group (12 locations)',
+    industry: 'Restaurant Group',
     icon: Utensils,
   },
   {
@@ -99,7 +99,7 @@ export function SocialProof() {
 
               <div className="sp-stars" aria-hidden="true">
                 {Array.from({ length: t.rating }).map((_, i) => (
-                  <Star key={i} size={16} className="sp-star-lucide" />
+                  <Star key={i} size={20} className="sp-star-lucide" />
                 ))}
               </div>
 
