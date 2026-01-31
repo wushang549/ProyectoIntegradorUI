@@ -1,14 +1,21 @@
-.gh-page {
+.lp-page {
   min-height: 100vh;
   background: #ffffff;
-  box-sizing: border-box;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  color: #111827;
 }
 
-.gh-main {
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 30px 15px;
-  box-sizing: border-box;
+.lp-main {
+  display: flex;
+  flex-direction: column;
 }
+
+.lp-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(17, 24, 39, 0.06);
+}
+

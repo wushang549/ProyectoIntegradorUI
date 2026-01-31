@@ -3,5 +3,8 @@ html, body {
 }
 
 body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Inter, Arial, sans-serif;
   margin: 0;
 }
+

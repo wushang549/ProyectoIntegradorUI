@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import googleIcon from '../../assets/google.png'
+import { Link } from 'react-router-dom'
 import appleIcon from '../../assets/apple.png'
+import logo from '../../assets/logo.svg'
 import './Login.css'
 
 export default function Login() {
@@ -9,8 +11,13 @@ export default function Login() {
   return (
     <div className="gl-page">
       <main className="gl-card">
-        <div className="gl-brand">Granulate</div>
-
+        <div className="tittle-logo">
+          <Link to="/" className="gl-logo-link" aria-label="Go to login">
+            <img className="gl-logo-login" src={logo} alt="Granulate logo" />
+          <div className="gl-brand">Granulate</div>
+           </Link>
+        </div>
+        
         <h1 className="gl-title">Welcome back</h1>
 
         <div className="gl-sso">

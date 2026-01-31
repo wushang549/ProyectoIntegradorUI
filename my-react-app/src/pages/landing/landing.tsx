@@ -1,13 +1,22 @@
-import SiteHeader from '../../components/siteheader/siteheader'
-import './landing.css'
+import SiteHeader from '../../components/siteheader/siteheader';
+import Hero from './components/hero';
 
 export default function Landing() {
+  const goToLogin = () => {
+    window.location.href = '/login';
+  };
+
+  const goToHow = () => {
+    document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
-    <div className="gh-page">
+    <div className="lp-page">
       <SiteHeader />
-      <main className="gh-main">
-        <section id="features"></section>
+      <main className="lp-main">
+        <Hero onTryFree={goToLogin} onSeeHowItWorks={goToHow} />
+        <section id="how-it-works"></section>
       </main>
     </div>
-  )
+  );
 }
