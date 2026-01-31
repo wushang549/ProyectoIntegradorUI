@@ -45,6 +45,7 @@
 .ft-card:hover {
   border-color: rgba(14, 126, 255, 0.3);
   box-shadow: 0 12px 24px rgba(11, 15, 25, 0.06);
+  transform: translateY(-3px);
 }
 
 .ft-icon {

@@ -47,6 +47,9 @@
   background: #ffffff;
   padding: 18px 18px 16px;
 }
+.hiw-card:hover {
+  transform: translateY(-3px);
+}
 
 .hiw-card-top {
   display: flex;
@@ -164,6 +167,9 @@
   border: 1px solid rgba(11, 15, 25, 0.08);
   background: #ffffff;
   padding: 18px;
+}
+.hiw-side:hover {
+  transform: translateY(-3px);
 }
 
 .hiw-side-head {

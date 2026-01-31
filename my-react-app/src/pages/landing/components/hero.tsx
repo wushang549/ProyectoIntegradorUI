@@ -205,7 +205,7 @@ export default function Hero() {
 
           <div className="lp-hero-actions">
             <Link className="lp-hero-cta" to="/login">
-              Get started
+              Try it for free
             </Link>
 
             <a className="lp-hero-link" href="#how-it-works">

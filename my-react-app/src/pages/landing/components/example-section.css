@@ -110,6 +110,9 @@
   background: #ffffff;
   padding: 22px;
 }
+.ex-card:hover {
+  transform: translateY(-3px);
+}
 
 .ex-block {
   margin-bottom: 28px;

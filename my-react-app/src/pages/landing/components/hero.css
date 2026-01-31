@@ -65,7 +65,7 @@
   background: #0E7EFF;
   color: #ffffff;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   border: 1px solid rgba(14, 126, 255, 0.45);
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(14, 126, 255, 0.22);
@@ -84,7 +84,7 @@
   background: transparent;
   color: black;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   border: 1px solid #e5e7eb;
   cursor: pointer;
 }
@@ -117,6 +117,9 @@
 .lp-hero-preview {
   display: flex;
   justify-content: flex-end;
+}
+.lp-hero-preview:hover {
+  transform: translateY(-3px);
 }
 
 .hero-dash {

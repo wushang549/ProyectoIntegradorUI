@@ -52,7 +52,13 @@
   background: #ffffff;
   padding: 20px;
   box-shadow: 0 10px 24px rgba(11, 15, 25, 0.06);
+  transition: transform 0.3s ease;
 }
+
+.sp-stat-card:hover {
+  transform: translateY(-3px);
+}
+
 
 .sp-stat-icon {
   width: 52px;
@@ -103,7 +109,9 @@
   flex-direction: column;
   gap: 12px;
 }
-
+.sp-card:hover {
+  transform: translateY(-3px);
+}
 .sp-badge {
   display: inline-flex;
   align-items: center;
