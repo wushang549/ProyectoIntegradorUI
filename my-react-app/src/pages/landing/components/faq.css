@@ -76,6 +76,9 @@
 }
 
 @media (max-width: 520px) {
+    .faq-section{
+    padding: 40px 24px;
+    }
   .faq-title {
     font-size: 28px;
   }

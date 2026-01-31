@@ -1,0 +1,279 @@
+.sp-section {
+  padding: 52px 24px;
+  background: #ffffff;
+}
+
+.sp-container {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.sp-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.sp-kicker {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 900;
+  color: #0E7EFF;
+  letter-spacing: 0.3px;
+}
+
+.sp-title {
+  margin: 0;
+  font-size: 46px;
+  font-weight: 900;
+  color: #0b0f19;
+  letter-spacing: -0.4px;
+}
+
+.sp-stats {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 44px;
+}
+.sp-star-lucide {
+  width: 16px;
+  height: 16px;
+  color: #f59e0b;
+  fill: #f59e0b;
+}
+
+.sp-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(11, 15, 25, 0.08);
+  background: #ffffff;
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(11, 15, 25, 0.06);
+}
+
+.sp-stat-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: rgba(14, 126, 255, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0E7EFF;
+  flex: 0 0 auto;
+}
+
+.sp-industry-icon {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+}
+
+.sp-stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0b0f19;
+  letter-spacing: -0.3px;
+  line-height: 1.05;
+}
+
+.sp-stat-label {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(11, 15, 25, 0.55);
+}
+
+.sp-testimonials {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.sp-card {
+  border-radius: 18px;
+  border: 1px solid rgba(11, 15, 25, 0.08);
+  background: #ffffff;
+  padding: 18px;
+  box-shadow: 0 18px 34px rgba(11, 15, 25, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(11, 15, 25, 0.6);
+}
+
+.sp-badge svg {
+  width: 18px;
+  height: 18px;
+  color: #0E7EFF;
+}
+
+.sp-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sp-star {
+  width: 16px;
+  height: 16px;
+  fill: none;
+}
+
+.sp-star path {
+  fill: #f59e0b;
+}
+
+.sp-quote {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.65;
+  color: rgba(11, 15, 25, 0.88);
+  font-weight: 550;
+  flex: 1 1 auto;
+}
+
+.sp-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(11, 15, 25, 0.08);
+}
+
+.sp-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: rgba(14, 126, 255, 0.10);
+  color: #0E7EFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+
+.sp-name {
+  font-size: 13px;
+  font-weight: 900;
+  color: #0b0f19;
+}
+
+.sp-role {
+  font-size: 13px;
+  font-weight: 750;
+  color: rgba(11, 15, 25, 0.55);
+  margin-top: 2px;
+}
+
+.sp-metrics {
+  margin-top: 44px;
+  border-radius: 16px;
+  border: 1px solid rgba(11, 15, 25, 0.08);
+  background: rgba(11, 15, 25, 0.02);
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  text-align: center;
+}
+
+.sp-metric {
+  min-width: 160px;
+}
+
+.sp-metric-value {
+  font-size: 26px;
+  font-weight: 1000;
+  color: #0b0f19;
+  letter-spacing: -0.3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.sp-metric-value--stars svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sp-metric-label {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 750;
+  color: rgba(11, 15, 25, 0.55);
+}
+
+.sp-divider {
+  width: 1px;
+  height: 34px;
+  background: rgba(11, 15, 25, 0.10);
+  display: none;
+}
+
+.sp-trust {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 750;
+  color: rgba(11, 15, 25, 0.55);
+}
+
+.sp-trust-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-check {
+  width: 14px;
+  height: 14px;
+  color: #22c55e;
+}
+
+@media (min-width: 640px) {
+  .sp-divider {
+    display: block;
+  }
+}
+
+@media (max-width: 980px) {
+  .sp-testimonials {
+    grid-template-columns: 1fr;
+  }
+
+  .sp-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .sp-title {
+    font-size: 28px;
+  }
+
+  .sp-section {
+    padding: 20px 18px;
+  }
+
+  
+}
