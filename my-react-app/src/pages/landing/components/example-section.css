@@ -1,19 +1,19 @@
 .ex-section {
-  padding: 96px 24px;
+  padding: 72px 18px;
 }
 
 .ex-container {
-  max-width: 1600px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
 .ex-header {
   text-align: center;
-  margin-bottom: 56px;
+  margin-bottom: 42px;
 }
 
 .ex-title {
-  font-size: 40px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.8px;
   margin: 0;
@@ -21,40 +21,40 @@
 }
 
 .ex-subtitle {
-  margin-top: 12px;
-  font-size: 22px;
+  margin-top: 9px;
+  font-size: 17px;
   font-weight: 600;
   color: rgba(11, 15, 25, 0.6);
 }
 
 .ex-grid {
   display: grid;
-  grid-template-columns: 1fr 520px;
-  gap: 48px;
+  grid-template-columns: 1fr 390px;
+  gap: 36px;
   align-items: start;
 }
 
 .ex-left-title {
-  font-size: 28px;
+  font-size: 21px;
   font-weight: 800;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   color: #0b0f19;
 }
 
 .ex-list {
   list-style: none;
   padding: 0;
-  margin: 0 0 32px;
+  margin: 0 0 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 11px;
 }
 
 .ex-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 18px;
+  gap: 9px;
+  font-size: 14px;
   line-height: 1.6;
   color: rgba(11, 15, 25, 0.65);
   font-weight: 500;
@@ -66,8 +66,8 @@
 }
 
 .ex-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
   flex-shrink: 0;
 }
@@ -78,72 +78,72 @@
 .ex-dot.primary { background: #0e7eff; }
 
 .ex-callout {
-  border-radius: 16px;
+  border-radius: 12px;
   border: 2px solid rgba(14, 126, 255, 0.2);
   background: rgba(14, 126, 255, 0.06);
-  padding: 18px;
+  padding: 14px;
 }
 
 .ex-callout-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .ex-callout-label {
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 800;
   color: #0e7eff;
 }
 
 .ex-callout-text {
-  font-size: 16px;
+  font-size: 12px;
   line-height: 1.7;
   color: #0b0f19;
   font-weight: 500;
 }
 
 .ex-card {
-  border-radius: 20px;
+  border-radius: 15px;
   border: 1px solid rgba(11, 15, 25, 0.08);
   background: #ffffff;
-  padding: 22px;
+  padding: 17px;
 }
 .ex-card:hover {
   transform: translateY(-3px);
 }
 
 .ex-block {
-  margin-bottom: 28px;
+  margin-bottom: 21px;
 }
 
 .ex-block-title {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgba(11, 15, 25, 0.6);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .ex-progress {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .ex-progress-head {
   display: flex;
   justify-content: space-between;
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .red-text { color: #ef4444; }
 .green-text { color: #16a34a; }
 
 .ex-bar {
-  height: 10px;
+  height: 8px;
   border-radius: 999px;
   background: rgba(11, 15, 25, 0.08);
   overflow: hidden;
@@ -163,14 +163,14 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 9px;
 }
 
 .ex-mini-list li {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 16px;
+  gap: 8px;
+  font-size: 12px;
   color: #0b0f19;
   font-weight: 500;
 }
@@ -178,15 +178,15 @@
 .ex-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ex-tags span {
-  padding: 8px 12px;
-  border-radius: 12px;
+  padding: 6px 9px;
+  border-radius: 9px;
   border: 1px solid rgba(11, 15, 25, 0.08);
   background: rgba(11, 15, 25, 0.03);
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -198,22 +198,22 @@
 
 @media (max-width: 520px) {
   .ex-section {
-    padding: 40px 24px;
+    padding: 30px 18px;
   }
 
   .ex-title {
-    font-size: 28px;
+    font-size: 21px;
   }
 
   .ex-subtitle {
-    font-size: 16px;
+    font-size: 12px;
   }
 
   .ex-left-title {
-    font-size: 22px;
+    font-size: 17px;
   }
 
   .ex-item {
-    font-size: 15px;
+    font-size: 11px;
   }
 }

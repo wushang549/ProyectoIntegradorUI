@@ -1,20 +1,20 @@
 .hiw-section {
-  padding: 96px 24px;
+  padding: 72px 18px;
   background: rgba(11, 15, 25, 0.02);
 }
 
 .hiw-container {
-  max-width: 1600px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
 .hiw-header {
   text-align: center;
-  margin-bottom: 48px;
+  margin-bottom: 36px;
 }
 
 .hiw-title {
-  font-size: 40px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.8px;
   color: #0b0f19;
@@ -22,30 +22,30 @@
 }
 
 .hiw-subtitle {
-  margin-top: 12px;
-  font-size: 22px;
+  margin-top: 9px;
+  font-size: 17px;
   color: rgba(11, 15, 25, 0.6);
   font-weight: 600;
 }
 
 .hiw-grid {
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 18px;
+  grid-template-columns: 1fr 240px;
+  gap: 14px;
   align-items: start;
 }
 
 .hiw-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 11px;
 }
 
 .hiw-card {
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid rgba(11, 15, 25, 0.08);
   background: #ffffff;
-  padding: 18px 18px 16px;
+  padding: 14px 14px 12px;
 }
 .hiw-card:hover {
   transform: translateY(-3px);
@@ -54,26 +54,26 @@
 .hiw-card-top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 9px;
 }
 
 .hiw-number {
-  width: 45px;
-  height: 45px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   display: grid;
   place-items: center;
   background: #0e7eff;
   color: #ffffff;
   font-weight: 800;
-  font-size: 14px;
+  font-size: 11px;
 }
 
 .hiw-icon {
-  width: 45px;
-  height: 45px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   border: 1px solid rgba(11, 15, 25, 0.08);
   display: grid;
   place-items: center;
@@ -82,8 +82,8 @@
 }
 
 .hiw-card-title {
-  margin: 0 0 8px;
-  font-size: 20px;
+  margin: 0 0 6px;
+  font-size: 15px;
   font-weight: 800;
   color: #0b0f19;
   letter-spacing: -0.2px;
@@ -91,7 +91,7 @@
 
 .hiw-card-desc {
   margin: 0;
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1.7;
   color: rgba(11, 15, 25, 0.65);
   font-weight: 500;
@@ -100,73 +100,73 @@
 .hiw-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
+  gap: 6px;
+  margin-top: 11px;
 }
 
 .hiw-chip {
-  border-radius: 12px;
+  border-radius: 9px;
   border: 1px solid rgba(11, 15, 25, 0.08);
   background: rgba(11, 15, 25, 0.03);
-  padding: 8px 10px;
-  font-size: 15px;
+  padding: 6px 8px;
+  font-size: 11px;
   font-weight: 700;
   color: rgba(11, 15, 25, 0.6);
 }
 
 .hiw-bullets {
-  margin: 14px 0 0;
+  margin: 11px 0 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .hiw-bullet {
   display: flex;
-   align-items: center;
-  gap: 10px;
-  font-size: 17px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   line-height: 1.5;
   color: rgba(11, 15, 25, 0.65);
   font-weight: 600;
 }
 
 .hiw-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
   background: #0e7eff;
   flex: 0 0 auto;
 }
 
 .hiw-callout {
-  margin-top: 14px;
-  border-radius: 14px;
+  margin-top: 11px;
+  border-radius: 11px;
   border: 1px solid rgba(14, 126, 255, 0.22);
   background: rgba(14, 126, 255, 0.06);
-  padding: 12px 12px;
+  padding: 9px 9px;
 }
 
 .hiw-callout-label {
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 800;
   color: rgba(14, 126, 255, 0.95);
 }
 
 .hiw-callout-value {
-  margin-top: 4px;
-  font-size: 16px;
+  margin-top: 3px;
+  font-size: 12px;
   font-weight: 600;
   color: #0b0f19;
 }
 
 .hiw-side {
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid rgba(11, 15, 25, 0.08);
   background: #ffffff;
-  padding: 18px;
+  padding: 14px;
 }
 .hiw-side:hover {
   transform: translateY(-3px);
@@ -175,14 +175,14 @@
 .hiw-side-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: rgba(11, 15, 25, 0.7);
-  margin-bottom: 12px;
+  margin-bottom: 9px;
 }
 
 .hiw-side-title {
   margin: 0;
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 800;
   color: #0b0f19;
 }
@@ -193,14 +193,14 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .hiw-side-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 17px;
+  gap: 8px;
+  font-size: 13px;
   line-height: 1.6;
   color: rgba(11, 15, 25, 0.65);
   font-weight: 600;
@@ -222,18 +222,18 @@
 
 @media (max-width: 520px) {
   .hiw-section {
-    padding: 40px 24px;
+    padding: 30px 18px;
   }
 
   .hiw-title {
-    font-size: 28px;
+    font-size: 21px;
   }
 
   .hiw-subtitle {
-    font-size: 16px;
+    font-size: 12px;
   }
 
   .hiw-card-desc {
-    font-size: 15px;
+    font-size: 11px;
   }
 }
