@@ -1,0 +1,83 @@
+.ap-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(11, 15, 25, 0.08);
+}
+
+.ap-header-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+  height: 64px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ap-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ap-brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.ap-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #0e7eff;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  flex: 0 0 auto;
+}
+
+.ap-brand-name {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+
+.ap-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(11, 15, 25, 0.10);
+}
+
+.ap-title-wrap {
+  min-width: 0;
+}
+
+.ap-page-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+.ap-page-subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(11, 15, 25, 0.55);
+}
+
+@media (max-width: 720px) {
+  .ap-divider,
+  .ap-title-wrap {
+    display: none;
+  }
+}

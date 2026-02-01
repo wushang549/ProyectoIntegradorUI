@@ -1,0 +1,42 @@
+.ap-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 900;
+  color: rgba(11, 15, 25, 0.85);
+}
+
+.ap-seg {
+  margin-top: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(11, 15, 25, 0.10);
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  background: rgba(11, 15, 25, 0.02);
+}
+
+.ap-seg-btn {
+  border: 0;
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 10px 10px;
+  font-size: 13px;
+  font-weight: 900;
+  background: transparent;
+  color: rgba(11, 15, 25, 0.55);
+}
+
+.ap-seg-btn:hover {
+  color: rgba(11, 15, 25, 0.85);
+}
+
+.ap-seg-btn.active {
+  background: #0e7eff;
+  color: #ffffff;
+}
+
+.ap-range {
+  width: 100%;
+  margin-top: 10px;
+}
