@@ -28,6 +28,7 @@
   border: 1px solid rgba(11, 15, 25, 0.08);
   background: #ffffff;
   overflow: hidden;
+  height: 100%;
 }
 
 .ap-card-head {
