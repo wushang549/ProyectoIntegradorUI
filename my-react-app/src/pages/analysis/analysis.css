@@ -1,0 +1,133 @@
+.ap-page {
+  min-height: 100vh;
+  background: #ffffff;
+  color: #0b0f19;
+}
+
+.ap-main {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+.ap-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.ap-col {
+  display: grid;
+  gap: 14px;
+}
+
+/* Shared card */
+.ap-card {
+  border-radius: 18px;
+  border: 1px solid rgba(11, 15, 25, 0.08);
+  background: #ffffff;
+  overflow: hidden;
+  height: 100%;
+}
+
+.ap-card-head {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(11, 15, 25, 0.06);
+}
+
+.ap-card-head-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(11, 15, 25, 0.70);
+}
+
+.ap-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.1px;
+  color: #0b0f19;
+}
+
+.ap-card-body {
+  padding: 14px 16px 16px;
+}
+
+/* Shared buttons */
+.ap-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ap-btn {
+  border: 1px solid transparent;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.ap-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ap-btn-primary {
+  background: #0e7eff;
+  color: #ffffff;
+  border-color: rgba(14, 126, 255, 0.35);
+  box-shadow: 0 10px 20px rgba(11, 15, 25, 0.06);
+}
+
+.ap-btn-primary:hover:not(:disabled) {
+  box-shadow: 0 14px 26px rgba(11, 15, 25, 0.08);
+}
+
+.ap-btn-ghost {
+  background: transparent;
+  border-color: rgba(11, 15, 25, 0.10);
+  color: rgba(11, 15, 25, 0.9);
+}
+
+.ap-btn-ghost:hover:not(:disabled) {
+  background: rgba(11, 15, 25, 0.03);
+}
+
+.ap-btn-outline {
+  background: transparent;
+  border-color: rgba(11, 15, 25, 0.10);
+  color: rgba(11, 15, 25, 0.9);
+}
+
+.ap-btn-outline:hover:not(:disabled) {
+  background: rgba(11, 15, 25, 0.03);
+}
+
+.ap-btn-full {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Shared animations */
+.ap-spin {
+  animation: apSpin 0.9s linear infinite;
+}
+
+@keyframes apSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 980px) {
+  .ap-grid {
+    grid-template-columns: 1fr;
+  }
+}

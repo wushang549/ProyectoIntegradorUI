@@ -60,7 +60,7 @@ export default function SiteHeader() {
             Sign in
           </Link>
 
-          <Link to="/login" className="btn-primary">
+          <Link to="/analysis" className="btn-primary">
             Get started
           </Link>
 
