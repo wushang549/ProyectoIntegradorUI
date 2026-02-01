@@ -1,101 +1,101 @@
 .ap-output .ap-card-body {
-  padding-bottom: 18px;
+  padding-bottom: 14px;
 }
 
 .ap-empty,
 .ap-loading {
-  min-height: 400px;
+  min-height: 300px;
   display: grid;
   place-items: center;
   text-align: center;
-  padding: 12px 0;
+  padding: 9px 0;
 }
 
 .ap-empty-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
   background: rgba(11, 15, 25, 0.05);
   display: grid;
   place-items: center;
   color: rgba(11, 15, 25, 0.50);
-  margin-bottom: 14px;
+  margin-bottom: 11px;
 }
 
 .ap-empty-title {
   margin: 0;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 900;
   color: #0b0f19;
 }
 
 .ap-empty-sub {
-  margin: 6px 0 0;
-  font-size: 12px;
+  margin: 5px 0 0;
+  font-size: 9px;
   font-weight: 700;
   color: rgba(11, 15, 25, 0.50);
 }
 
 .ap-loading-spinner {
   color: #0e7eff;
-  margin-bottom: 12px;
+  margin-bottom: 9px;
 }
 
 .ap-results {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
 .ap-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .ap-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border-radius: 999px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   background: rgba(14, 126, 255, 0.10);
   color: #0e7eff;
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 900;
 }
 
 .ap-chip-count {
   border-radius: 999px;
   background: rgba(14, 126, 255, 0.18);
-  padding: 3px 7px;
-  font-size: 11px;
+  padding: 2px 5px;
+  font-size: 8px;
   font-weight: 900;
   color: rgba(11, 15, 25, 0.80);
 }
 
 .ap-clusters {
   display: grid;
-  gap: 12px;
+  gap: 9px;
 }
 
 .ap-cluster {
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid rgba(11, 15, 25, 0.08);
   background: #ffffff;
-  padding: 14px;
+  padding: 11px;
 }
 
 .ap-cluster-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .ap-cluster-title {
   margin: 0;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 900;
   color: #0b0f19;
 }
@@ -105,31 +105,31 @@
   border-radius: 999px;
   background: rgba(11, 15, 25, 0.06);
   color: rgba(11, 15, 25, 0.55);
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 900;
-  padding: 6px 10px;
+  padding: 5px 8px;
 }
 
 .ap-keywords {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 5px;
+  margin-bottom: 9px;
 }
 
 .ap-keyword {
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(11, 15, 25, 0.04);
   border: 1px solid rgba(11, 15, 25, 0.06);
-  padding: 5px 8px;
-  font-size: 12px;
+  padding: 4px 6px;
+  font-size: 9px;
   font-weight: 800;
   color: rgba(11, 15, 25, 0.55);
 }
 
 .ap-example {
   margin: 0;
-  font-size: 13px;
+  font-size: 10px;
   line-height: 1.65;
   font-weight: 700;
   color: rgba(11, 15, 25, 0.60);
@@ -137,8 +137,8 @@
 }
 
 .ap-cluster-footer {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 9px;
+  padding-top: 9px;
   border-top: 1px solid rgba(11, 15, 25, 0.08);
 }
 
@@ -149,8 +149,8 @@
   cursor: not-allowed;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 9px;
   font-weight: 900;
   color: rgba(11, 15, 25, 0.45);
 }

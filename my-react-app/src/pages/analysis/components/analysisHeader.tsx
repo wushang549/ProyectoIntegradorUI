@@ -1,5 +1,6 @@
 import { Layers, Loader2, Play, RotateCcw } from 'lucide-react'
 import './AnalysisHeader.css'
+import logo from '../../../assets/logo.svg'
 
 type Props = {
   isLoading: boolean
@@ -13,8 +14,12 @@ export default function AnalysisHeader({ isLoading, onReset, onRun }: Props) {
       <div className="ap-header-inner">
         <div className="ap-brand">
           <a href="/" className="ap-brand-link">
-            <div className="ap-logo">
-              <Layers size={18} />
+            <div className="ap-logo-wrap">
+             <img
+            className="ap-logo"
+            src={logo}
+            alt="Granulate logo"
+          />
             </div>
             <span className="ap-brand-name">Hashtree</span>
           </a>
