@@ -3,9 +3,9 @@ import './faq.css'
 
 const faqs = [
   {
-    question: 'What data sources do you support?',
+    question: 'Is there an AI that can analyze my data?',
     answer:
-      'We support CSV uploads, direct text paste, and integrations with Google Reviews, Yelp, TripAdvisor, App Store reviews, Zendesk, Intercom, and more. Custom connectors are available on Business plans.',
+      'Yes! Granulate is an AI-powered data analyst that processes, interprets, and extracts insights from your data through natural language. Simply upload your data and ask questions in plain English to get charts, themes, sentiment analysis, and more.',
   },
   {
     question: 'How accurate is sentiment analysis?',
@@ -41,10 +41,8 @@ export default function FAQ() {
     <section id="faq" className="faq-section">
       <div className="faq-container">
         <div className="faq-header">
-          <h2 className="faq-title">Frequently asked questions</h2>
-          <p className="faq-subtitle">
-            Everything you need to know about Granulate.
-          </p>
+          <span className="section-label">// FAQ //</span>
+          <h2 className="faq-title">Your questions, answered</h2>
         </div>
 
         <div className="faq-list">

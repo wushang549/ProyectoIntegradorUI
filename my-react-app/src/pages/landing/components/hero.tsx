@@ -1,226 +1,168 @@
 import { Link } from 'react-router-dom'
+import { Play, TrendingUp, ArrowRight } from 'lucide-react'
 import './hero.css'
 
 function HeroDashboard() {
   return (
-    <div className="hero-dash" aria-label="Product dashboard preview">
+    <div className="hero-dash">
+      {/* Main Dashboard Card */}
       <div className="hero-dash__card">
-        <div className="hero-dash__top">
-          <div className="hero-dash__dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
+        <div className="hero-dash__toolbar">
+          <div className="hero-dash__tabs">
+            <span className="hero-dash__tab active">Insights</span>
+            <span className="hero-dash__tab">Clusters</span>
+            <span className="hero-dash__tab">Export</span>
           </div>
-          <div className="hero-dash__title">Analytics Dashboard</div>
-          <div className="hero-dash__tag">Last 30 days</div>
         </div>
 
-        <div className="hero-dash__body">
-          <div className="hero-dash__stats">
-            <div className="hero-stat hero-stat--blue">
-              <div className="hero-stat__k">Total Reviews</div>
-              <div className="hero-stat__v">2,847</div>
-              <div className="hero-stat__d hero-stat__d--up">+12.5%</div>
+        <div className="hero-dash__content">
+          {/* Chat message */}
+          <div className="hero-dash__message">
+            <div className="hero-dash__message-text">
+              What are the main themes in customer feedback?
             </div>
-            <div className="hero-stat hero-stat--green">
-              <div className="hero-stat__k">Positive</div>
-              <div className="hero-stat__v">78%</div>
-              <div className="hero-stat__d hero-stat__d--up">+3.2%</div>
-            </div>
-            <div className="hero-stat hero-stat--amber">
-              <div className="hero-stat__k">Avg Response</div>
-              <div className="hero-stat__v">2.4h</div>
-              <div className="hero-stat__d hero-stat__d--up">-18min</div>
+            <div className="hero-dash__message-avatar">
+              <span>You</span>
             </div>
           </div>
 
-          <div className="hero-dash__grid">
-            <div className="hero-panel">
-              <div className="hero-panel__t">Topic Distribution</div>
-              <div className="hero-panel__row">
-                <svg viewBox="0 0 100 100" className="hero-donut" aria-hidden="true">
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" opacity="0.12" strokeWidth="12" />
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="none"
-                    stroke="#0E7EFF"
-                    strokeWidth="12"
-                    strokeDasharray="100.53 150.79"
-                    strokeDashoffset="0"
-                    transform="rotate(-90 50 50)"
-                  />
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="none"
-                    stroke="#22c55e"
-                    strokeWidth="12"
-                    strokeDasharray="62.83 188.49"
-                    strokeDashoffset="-100.53"
-                    transform="rotate(-90 50 50)"
-                  />
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="none"
-                    stroke="#f59e0b"
-                    strokeWidth="12"
-                    strokeDasharray="50.26 200.06"
-                    strokeDashoffset="-163.36"
-                    transform="rotate(-90 50 50)"
-                  />
-                  <text x="50" y="47" textAnchor="middle" className="hero-donut__big">
-                    847
-                  </text>
-                  <text x="50" y="60" textAnchor="middle" className="hero-donut__small">
-                    mentions
-                  </text>
-                </svg>
-
-                <div className="hero-legend">
-                  <div className="hero-legend__item">
-                    <span className="hero-swatch hero-swatch--blue" />
-                    <span className="hero-legend__name">Service</span>
-                    <span className="hero-legend__val">40%</span>
-                  </div>
-                  <div className="hero-legend__item">
-                    <span className="hero-swatch hero-swatch--green" />
-                    <span className="hero-legend__name">Quality</span>
-                    <span className="hero-legend__val">25%</span>
-                  </div>
-                  <div className="hero-legend__item">
-                    <span className="hero-swatch hero-swatch--amber" />
-                    <span className="hero-legend__name">Pricing</span>
-                    <span className="hero-legend__val">20%</span>
-                  </div>
-                  <div className="hero-legend__item">
-                    <span className="hero-swatch hero-swatch--muted" />
-                    <span className="hero-legend__name">Other</span>
-                    <span className="hero-legend__val">15%</span>
-                  </div>
+          {/* AI Response */}
+          <div className="hero-dash__response">
+            <p className="hero-dash__response-text">
+              I've analyzed 2,847 customer reviews and identified <strong>5 main themes</strong>. 
+              The most discussed topic is <strong>delivery speed</strong> (34%), followed by 
+              product quality (28%) and customer service (21%).
+            </p>
+            
+            {/* Mini chart */}
+            <div className="hero-dash__chart">
+              <div className="hero-dash__bar">
+                <span className="hero-dash__bar-label">Delivery</span>
+                <div className="hero-dash__bar-track">
+                  <div className="hero-dash__bar-fill" style={{ width: '85%' }}></div>
                 </div>
+                <span className="hero-dash__bar-value">34%</span>
+              </div>
+              <div className="hero-dash__bar">
+                <span className="hero-dash__bar-label">Quality</span>
+                <div className="hero-dash__bar-track">
+                  <div className="hero-dash__bar-fill hero-dash__bar-fill--green" style={{ width: '70%' }}></div>
+                </div>
+                <span className="hero-dash__bar-value">28%</span>
+              </div>
+              <div className="hero-dash__bar">
+                <span className="hero-dash__bar-label">Service</span>
+                <div className="hero-dash__bar-track">
+                  <div className="hero-dash__bar-fill hero-dash__bar-fill--purple" style={{ width: '52%' }}></div>
+                </div>
+                <span className="hero-dash__bar-value">21%</span>
               </div>
             </div>
 
-            <div className="hero-panel">
-              <div className="hero-panel__t">Trending Topics</div>
-              <div className="hero-trends">
-                <div className="hero-trend">
-                  <span className="hero-trend__icon hero-trend__icon--red" />
-                  <span className="hero-trend__name">Long wait times</span>
-                  <span className="hero-trend__delta hero-trend__delta--red">+18</span>
-                </div>
-                <div className="hero-trend">
-                  <span className="hero-trend__icon hero-trend__icon--green" />
-                  <span className="hero-trend__name">Staff friendliness</span>
-                  <span className="hero-trend__delta hero-trend__delta--green">+24</span>
-                </div>
-                <div className="hero-trend">
-                  <span className="hero-trend__icon hero-trend__icon--amber" />
-                  <span className="hero-trend__name">Menu variety</span>
-                  <span className="hero-trend__delta hero-trend__delta--amber">+5</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="hero-panel">
-            <div className="hero-panel__t">Top Keywords</div>
-            <div className="hero-chips">
-              <span className="hero-chip hero-chip--blue">fast delivery</span>
-              <span className="hero-chip hero-chip--green">fresh ingredients</span>
-              <span className="hero-chip hero-chip--blue2">friendly</span>
-              <span className="hero-chip hero-chip--red">wait time</span>
-              <span className="hero-chip hero-chip--amber">pricing</span>
-              <span className="hero-chip hero-chip--green2">clean</span>
-              <span className="hero-chip hero-chip--blue2">recommend</span>
+            {/* Action buttons */}
+            <div className="hero-dash__actions">
+              <button className="hero-dash__action">
+                <TrendingUp size={14} />
+                Show trends
+              </button>
+              <button className="hero-dash__action">View all clusters</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="hero-float hero-float--right" aria-hidden="true">
-  <span className="hero-float__icon hero-float__icon--green">
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5 13l4 4L19 7" />
-    </svg>
-  </span>
-  <div>
-    <div className="hero-float__t">New insight detected</div>
-    <div className="hero-float__s">3 emerging patterns</div>
-  </div>
-</div>
-
-<div className="hero-float hero-float--left" aria-hidden="true">
-  <span className="hero-float__icon hero-float__icon--blue">
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-    </svg>
-  </span>
-  <div>
-    <div className="hero-float__t">Sentiment Score</div>
-    <div className="hero-float__v">+8.2%</div>
-  </div>
-</div>
-
+      {/* Floating stats card */}
+      <div className="hero-float">
+        <div className="hero-float__stat">
+          <span className="hero-float__value">2,847</span>
+          <span className="hero-float__label">Reviews analyzed</span>
+        </div>
+        <div className="hero-float__divider"></div>
+        <div className="hero-float__stat">
+          <span className="hero-float__value">2.4s</span>
+          <span className="hero-float__label">Analysis time</span>
+        </div>
+      </div>
     </div>
   )
 }
 
 export default function Hero() {
   return (
-    <section className="lp-hero" id="hero" aria-label="Granulate hero">
-      <div className="lp-hero-inner">
-        <div className="lp-hero-copy">
-          <h1 className="lp-hero-title">Turn raw feedback into clear insights.</h1>
+    <section className="hero" id="hero">
+      {/* Grid background */}
+      <div className="hero__grid" aria-hidden="true"></div>
 
-          <p className="lp-hero-subtitle">
-            Granulate analyzes comments, reviews, and unstructured text to reveal patterns, trends, and
-            signals you can act on.
+      {/* Gradient dots decoration */}
+      <div className="hero__dots" aria-hidden="true">
+        <div className="hero__dot hero__dot--1"></div>
+        <div className="hero__dot hero__dot--2"></div>
+        <div className="hero__dot hero__dot--3"></div>
+        <div className="hero__dot hero__dot--4"></div>
+        <div className="hero__dot hero__dot--5"></div>
+        <div className="hero__dot hero__dot--6"></div>
+        <div className="hero__dot hero__dot--7"></div>
+        <div className="hero__dot hero__dot--8"></div>
+        <div className="hero__dot hero__dot--9"></div>
+        <div className="hero__dot hero__dot--10"></div>
+        <div className="hero__dot hero__dot--11"></div>
+        <div className="hero__dot hero__dot--12"></div>
+        <div className="hero__dot hero__dot--13"></div>
+        <div className="hero__dot hero__dot--14"></div>
+        <div className="hero__dot hero__dot--15"></div>
+        <div className="hero__dot hero__dot--16"></div>
+        <div className="hero__dot hero__dot--17"></div>
+        <div className="hero__dot hero__dot--18"></div>
+        <div className="hero__dot hero__dot--19"></div>
+        <div className="hero__dot hero__dot--20"></div>
+        <div className="hero__dot hero__dot--21"></div>
+        <div className="hero__dot hero__dot--22"></div>
+        <div className="hero__dot hero__dot--23"></div>
+        <div className="hero__dot hero__dot--24"></div>
+        <div className="hero__dot hero__dot--25"></div>
+        <div className="hero__dot hero__dot--26"></div>
+        <div className="hero__dot hero__dot--27"></div>
+        <div className="hero__dot hero__dot--28"></div>
+        <div className="hero__dot hero__dot--29"></div>
+        <div className="hero__dot hero__dot--30"></div>
+      </div>
+
+      <div className="hero__container">
+        <div className="hero__content">
+          {/* Social proof pill */}
+          <div className="hero__social">
+            <span className="hero__social-text" style={{ color: 'var(--color-text-primary) ' }} >No experience needed</span>
+          </div>
+
+          {/* Headline */}
+          <h1 className="hero__title">
+            Data analysis
+            <br />
+            <em>made easy</em> with Granulate AI.
+          </h1>
+
+          {/* Subheadline */}
+          <p className="hero__subtitle">
+            Upload data and get deep insights that help you make better decisions in seconds.
+
           </p>
 
-          <div className="lp-hero-actions">
-            <Link className="lp-hero-cta" to="/login">
-              Try it for free
+          {/* CTAs */}
+          <div className="hero__actions">
+            <Link className="hero__cta hero__cta--primary" to="/analysis">
+              Try for free
+              <ArrowRight size={16} />
             </Link>
 
-            <a className="lp-hero-link" href="#how-it-works">
+            <a className="hero__cta hero__cta--secondary" href="#how-it-works">
+              <Play size={14} />
               See how it works
             </a>
           </div>
-
-          <div className="lp-hero-meta" aria-label="Highlights">
-            <div className="lp-hero-pill">Auto clustering</div>
-            <div className="lp-hero-pill">Theme summaries</div>
-            <div className="lp-hero-pill">Sentiment + trends</div>
-          </div>
         </div>
 
-        <div className="lp-hero-preview" aria-label="Product preview">
+        {/* Dashboard Preview */}
+        <div className="hero__preview">
           <HeroDashboard />
         </div>
       </div>

@@ -1,133 +1,145 @@
-import { Upload, Cpu, BarChart3, FileOutput } from 'lucide-react'
+import { Upload, MessageSquare, BarChart3, Download } from 'lucide-react'
 import './how-it-works.css'
 
-type Step = {
-  icon: React.ElementType
-  number: string
-  title: string
-  description: string
-  chips?: string[]
-  bullets?: string[]
-  callout?: { label: string; value: string }
-}
-
-const steps: Step[] = [
+const steps = [
   {
+    number: '01',
+    title: 'Add your data',
+    description: 'Upload CSV, Excel, or paste text. Connect multiple data sources seamlessly.',
     icon: Upload,
-    number: '1',
-    title: 'Ingest your data',
-    description:
-      'Upload CSV or PKL files with English text, or paste a public Reddit/X post URL. We validate format and prep your data for analysis.',
-    chips: ['CSV', 'PKL', 'Reddit', 'X (Twitter)'],
+    visual: 'upload',
   },
   {
-    icon: Cpu,
-    number: '2',
-    title: 'Hashtree processes the text',
-    description:
-      'We generate embeddings, reduce dimensionality with UMAP, and apply hierarchical clustering to detect topic structure. Sentiment is computed per cluster.',
-    bullets: [
-      'Embeddings generation',
-      'UMAP dimensionality reduction',
-      'Hierarchical topic clustering',
-      'Sentiment scoring',
-    ],
+    number: '02',
+    title: 'Ask in plain English',
+    description: 'No coding needed. Just describe what insights you want to discover.',
+    icon: MessageSquare,
+    visual: 'chat',
   },
   {
+    number: '03',
+    title: 'Get instant insights',
+    description: 'AI analyzes themes, sentiment, and trends. View beautiful visualizations.',
     icon: BarChart3,
-    number: '3',
-    title: 'Explore and refine insights',
-    description:
-      'Inspect interactive plots, adjust clustering granularity, review individual comments, and request automatic topic labels from an LLM.',
-    callout: {
-      label: 'LLM-generated topic',
-      value: 'Delivery delays during peak hours',
-    },
+    visual: 'chart',
+  },
+  {
+    number: '04',
+    title: 'Export & share',
+    description: 'Download reports as PDF or CSV. Share insights with your team.',
+    icon: Download,
+    visual: 'export',
   },
 ]
 
-const typicalOutputs = [
-  'Hierarchical topic tree (dendrogram)',
-  'UMAP cluster visualization',
-  'Topic-level sentiment distribution',
-  'AI-generated summaries per cluster',
-  'Exportable results (CSV, PDF, ZIP)',
-]
+function StepVisual({ type }: { type: string }) {
+  if (type === 'upload') {
+    return (
+      <div className="hiw-visual hiw-visual--upload">
+        <div className="hiw-visual__files">
+          <div className="hiw-visual__file hiw-visual__file--csv">
+            <span className="hiw-visual__file-icon">📊</span>
+            <span>reviews.csv</span>
+          </div>
+          <div className="hiw-visual__file hiw-visual__file--xlsx">
+            <span className="hiw-visual__file-icon">📑</span>
+            <span>feedback.xlsx</span>
+          </div>
+        </div>
+        <div className="hiw-visual__cloud">
+          <Upload size={24} />
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'chat') {
+    return (
+      <div className="hiw-visual hiw-visual--chat">
+        <div className="hiw-visual__input">
+          <span>What are customers complaining about?</span>
+          <span className="hiw-visual__cursor">|</span>
+        </div>
+        <div className="hiw-visual__suggestions">
+          <span>Show sentiment trends</span>
+          <span>Find top themes</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'chart') {
+    return (
+      <div className="hiw-visual hiw-visual--chart">
+        <div className="hiw-visual__chart-header">
+          <span>Sentiment Distribution</span>
+        </div>
+        <div className="hiw-visual__bars">
+          <div className="hiw-visual__bar-item">
+            <div className="hiw-visual__bar hiw-visual__bar--positive" style={{ height: '80%' }}></div>
+            <span>Positive</span>
+          </div>
+          <div className="hiw-visual__bar-item">
+            <div className="hiw-visual__bar hiw-visual__bar--neutral" style={{ height: '45%' }}></div>
+            <span>Neutral</span>
+          </div>
+          <div className="hiw-visual__bar-item">
+            <div className="hiw-visual__bar hiw-visual__bar--negative" style={{ height: '30%' }}></div>
+            <span>Negative</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="hiw-visual hiw-visual--export">
+      <div className="hiw-visual__doc">
+        <div className="hiw-visual__doc-header">
+          <span>Analysis Report</span>
+          <Download size={14} />
+        </div>
+        <div className="hiw-visual__doc-lines">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function HowItWorks() {
   return (
-    <section id="how-it-works" className="hiw-section">
-      <div className="hiw-container">
-        <div className="hiw-header">
-          <h2 className="hiw-title">How it works</h2>
-          <p className="hiw-subtitle">
-            From raw social data to structured insights in a few clear steps.
+    <section id="how-it-works" className="hiw">
+      <div className="hiw__container">
+        {/* Header */}
+        <div className="hiw__header">
+          <span className="section-label">// How it works //</span>
+          <h2 className="hiw__title">
+            Analyze your data through
+            <br />a simple conversation
+          </h2>
+          <p className="hiw__subtitle">
+            Ask a question in plain English, and our AI will instantly provide 
+            insights, themes, and visualizations from your data.
           </p>
         </div>
 
-        <div className="hiw-grid">
-          <div className="hiw-steps">
-            {steps.map((step) => {
-              const Icon = step.icon
-              return (
-                <div key={step.title} className="hiw-card">
-                  <div className="hiw-card-top">
-                    <div className="hiw-number">{step.number}</div>
-                    <div className="hiw-icon">
-                      <Icon size={25} />
-                    </div>
-                  </div>
-
-                  <h3 className="hiw-card-title">{step.title}</h3>
-                  <p className="hiw-card-desc">{step.description}</p>
-
-                  {step.chips && (
-                    <div className="hiw-chips">
-                      {step.chips.map((c) => (
-                        <span key={c} className="hiw-chip">
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {step.bullets && (
-                    <ul className="hiw-bullets">
-                      {step.bullets.map((b) => (
-                        <li key={b} className="hiw-bullet">
-                          <span className="hiw-dot" />
-                          <span>{b}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {step.callout && (
-                    <div className="hiw-callout">
-                      <div className="hiw-callout-label">{step.callout.label}</div>
-                      <div className="hiw-callout-value">{step.callout.value}</div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          <aside className="hiw-side">
-            <div className="hiw-side-head">
-              <FileOutput size={25} />
-              <h4 className="hiw-side-title">Typical outputs</h4>
+        {/* Steps Grid */}
+        <div className="hiw__grid">
+          {steps.map((step) => (
+            <div key={step.number} className="hiw__card">
+              <div className="hiw__card-visual">
+                <StepVisual type={step.visual} />
+              </div>
+              <div className="hiw__card-content">
+                <h3 className="hiw__card-title">{step.title}</h3>
+                <span className="hiw__card-number">{step.number}</span>
+              </div>
+              <p className="hiw__card-desc">{step.description}</p>
             </div>
-
-            <ul className="hiw-side-list">
-              {typicalOutputs.map((o) => (
-                <li key={o} className="hiw-side-item">
-                  <span className="hiw-dot" />
-                  <span>{o}</span>
-                </li>
-              ))}
-            </ul>
-          </aside>
+          ))}
         </div>
       </div>
     </section>

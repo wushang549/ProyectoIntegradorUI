@@ -1,80 +1,136 @@
-import {
-  Layers,
-  BarChart3,
-  TrendingUp,
-  Search,
-  Filter,
-  Download,
-} from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import './features.css'
 
 const features = [
   {
-    icon: Layers,
-    title: 'Automatic theme clustering',
-    description:
-      'Customer feedback is grouped into clear themes automatically. No manual tagging or rules needed.',
+    title: 'Theme clustering',
+    description: 'Automatically group feedback into meaningful themes and topics',
+    visual: 'cluster',
   },
   {
-    icon: BarChart3,
-    title: 'Sentiment by topic',
-    description:
-      'Understand positive and negative sentiment for each theme, not just a single overall score.',
+    title: 'Sentiment analysis',
+    description: 'Identify positive, negative, or neutral sentiment in text',
+    visual: 'sentiment',
   },
   {
-    icon: TrendingUp,
     title: 'Trend detection',
-    description:
-      'Identify rising complaints and emerging issues early, before they impact ratings or churn.',
+    description: 'Spot emerging patterns and issues before they grow',
+    visual: 'trend',
   },
   {
-    icon: Search,
-    title: 'Keyword & quote evidence',
-    description:
-      'Every insight is backed by real keywords and exact customer quotes for full transparency.',
+    title: 'Keyword extraction',
+    description: 'Extract and highlight the most important terms and phrases',
+    visual: 'keywords',
   },
   {
-    icon: Filter,
-    title: 'Filters and segmentation',
-    description:
-      'Analyze feedback by location, time range, channel, rating, or custom segments.',
+    title: 'Data visualization',
+    description: 'Create beautiful charts and graphs from your insights',
+    visual: 'chart',
   },
   {
-    icon: Download,
-    title: 'Export and sharing',
-    description:
-      'Export insights as PDF or CSV, or share a live link with teammates and stakeholders.',
+    title: 'Export reports',
+    description: 'Download comprehensive reports in PDF or CSV format',
+    visual: 'export',
   },
 ]
 
+function FeatureVisual({ type }: { type: string }) {
+  if (type === 'cluster') {
+    return (
+      <div className="ft-visual ft-visual--cluster">
+        <div className="ft-cluster">
+          <span className="ft-cluster__node ft-cluster__node--1">Service</span>
+          <span className="ft-cluster__node ft-cluster__node--2">Quality</span>
+          <span className="ft-cluster__node ft-cluster__node--3">Price</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'sentiment') {
+    return (
+      <div className="ft-visual ft-visual--sentiment">
+        <div className="ft-sentiment">
+          <div className="ft-sentiment__bar ft-sentiment__bar--pos"></div>
+          <div className="ft-sentiment__bar ft-sentiment__bar--neu"></div>
+          <div className="ft-sentiment__bar ft-sentiment__bar--neg"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'trend') {
+    return (
+      <div className="ft-visual ft-visual--trend">
+        <svg viewBox="0 0 100 50" className="ft-trend__line">
+          <path d="M0,40 Q25,35 40,25 T70,15 T100,5" fill="none" stroke="#3b82f6" strokeWidth="2" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (type === 'keywords') {
+    return (
+      <div className="ft-visual ft-visual--keywords">
+        <div className="ft-keywords">
+          <span>delivery</span>
+          <span>quality</span>
+          <span>service</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (type === 'chart') {
+    return (
+      <div className="ft-visual ft-visual--chart">
+        <div className="ft-chart__bars">
+          <span style={{ height: '60%' }}></span>
+          <span style={{ height: '80%' }}></span>
+          <span style={{ height: '45%' }}></span>
+          <span style={{ height: '90%' }}></span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="ft-visual ft-visual--export">
+      <div className="ft-export__icon">PDF</div>
+    </div>
+  )
+}
+
 export function Features() {
   return (
-    <section id="features" className="ft-section">
-      <div className="ft-container">
-        <div className="ft-header">
-          <h2 className="ft-title">
-            Everything you need to understand customers
+    <section id="features" className="features">
+      <div className="features__container">
+        {/* Header */}
+        <div className="features__header">
+          <span className="section-label">// Features //</span>
+          <h2 className="features__title">
+            Granulate for every insight
           </h2>
-          <p className="ft-subtitle">
-            Turn unstructured feedback into clear, actionable insights in minutes.
+          <p className="features__subtitle">
+            No matter your goal, Granulate adapts to your needs with powerful 
+            analysis tools for any type of feedback data.
           </p>
         </div>
 
-        <div className="ft-grid">
-          {features.map((feature) => {
-            const Icon = feature.icon
-
-            return (
-              <div key={feature.title} className="ft-card">
-                <div className="ft-icon">
-                  <Icon size={20} />
-                </div>
-
-                <h3 className="ft-card-title">{feature.title}</h3>
-                <p className="ft-card-desc">{feature.description}</p>
+        {/* Features Grid */}
+        <div className="features__grid">
+          {features.map((feature) => (
+            <div key={feature.title} className="feature-card">
+              <h3 className="feature-card__title">{feature.title}</h3>
+              <p className="feature-card__desc">{feature.description}</p>
+              <a href="#" className="feature-card__link">
+                Explore <ArrowRight size={14} />
+              </a>
+              <div className="feature-card__visual">
+                <FeatureVisual type={feature.visual} />
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
       </div>
     </section>

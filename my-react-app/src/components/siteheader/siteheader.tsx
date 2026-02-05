@@ -1,15 +1,25 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import logo from '../../assets/logo.svg'
+import logo from '../../assets/Granulate logo.png'
 import './siteheader.css'
 
 export default function SiteHeader() {
   const [open, setOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
   const location = useLocation()
 
   useEffect(() => {
     setOpen(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20)
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   useEffect(() => {
     const handleResize = () => {
@@ -34,39 +44,51 @@ export default function SiteHeader() {
   }, [])
 
   return (
-    <header className="site-header">
+    <header className={`site-header ${scrolled ? 'scrolled' : ''}`}>
       <div className="site-header__container">
-        <Link
-          to="/"
-          className="site-header__brand"
-          onClick={() => setOpen(false)}
-        >
-          <img
-            className="gl-rect-logo"
-            src={logo}
-            alt="Granulate logo"
-          />
-          <span className="site-header__name">Granulate</span>
-        </Link>
+        {/* Left Segment: Logo */}
+        <div className="site-header__segment site-header__segment--left">
+          <Link
+            to="/"
+            className="site-header__brand"
+            onClick={() => setOpen(false)}
+          >
+            <div className="site-header__logo-wrapper">
+              <img
+                className="gl-logo"
+                src={logo}
+                alt="Granulate logo"
+              />
+            </div>
+            <span className="site-header__name">Granulate</span>
+          </Link>
+        </div>
 
-        <nav className="site-header__nav">
-          <a href="#features">Features</a>
-          <a href="#how-it-works">How it works</a>
-          <a href="#example">Example</a>
-        </nav>
+        {/* Center Segment: Navigation */}
+        <div className="site-header__segment site-header__segment--center">
+          <nav className="site-header__nav">
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#example">Use cases</a>
+          </nav>
+        </div>
 
-        <div className="site-header__right">
+        {/* Right Segment: Auth Actions */}
+        <div className="site-header__segment site-header__segment--right">
           <Link to="/login" className="btn-ghost">
             Sign in
           </Link>
 
           <Link to="/analysis" className="btn-primary">
-            Get started
+            Create an Account
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
           </Link>
 
           <button
             type="button"
-            className={`site-header__burger ${open ? 'is-open' : ''}`}
+            className={`site-header__menu-toggle ${open ? 'is-open' : ''}`}
             onClick={() => setOpen((v) => !v)}
             aria-label="Toggle menu"
             aria-expanded={open}
@@ -86,8 +108,16 @@ export default function SiteHeader() {
             How it works
           </a>
           <a href="#example" onClick={() => setOpen(false)}>
-            Example
+            Use cases
           </a>
+          <div className="mobile-menu__cta">
+            <Link to="/login" className="btn-ghost btn-ghost--full" onClick={() => setOpen(false)}>
+              Sign in
+            </Link>
+            <Link to="/analysis" className="btn-primary btn-primary--full" onClick={() => setOpen(false)}>
+              Create an Account
+            </Link>
+          </div>
         </div>
       </div>
     </header>

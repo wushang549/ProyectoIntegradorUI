@@ -1,158 +1,78 @@
-import { Star, Utensils, Building2, Smartphone } from 'lucide-react'
 import './social-proof.css'
 
 const testimonials = [
   {
     quote:
-      'We had no idea our brunch wait times were driving away regulars until Granulate flagged it. Changed our reservation system and saw a 23% increase in weekend covers.',
-    author: 'James Moretti',
-    role: 'Operations Director',
-    company: 'Moretti Restaurant Group',
-    avatar: 'JM',
-    rating: 5,
-    industry: 'Restaurant Group',
-    icon: Utensils,
+      "Granulate makes data analysis effortless—I can upload a file, ask questions in plain English, and get instant insights without touching a formula.",
+    author: 'Emma Clarke',
+    company: 'DataVision Analytics',
+    avatar: 'EC',
   },
   {
     quote:
-      "Guest reviews mentioned 'slow check-in' 340 times last quarter. We added mobile key access and complaints dropped to near zero. Granulate made the pattern obvious.",
-    author: 'Priya Sharma',
-    role: 'Guest Experience Manager',
-    company: 'Coastal Boutique Hotels',
-    avatar: 'PS',
-    rating: 5,
-    industry: 'Boutique Hotel Chain',
-    icon: Building2,
+      "Saves me hours every week by clustering customer feedback into clear themes. I can finally understand what customers really want.",
+    author: 'Liam Foster',
+    company: 'BrightPath Solutions',
+    avatar: 'LF',
   },
   {
     quote:
-      "Our app had 2,000+ reviews but we were guessing at priorities. Granulate showed us 'sync issues' was mentioned 4x more than anything else. Fixed it, rating went from 3.8 to 4.6.",
-    author: 'David Park',
-    role: 'Product Lead',
-    company: 'FitTrack',
-    avatar: 'DP',
-    rating: 5,
-    industry: 'Fitness App',
-    icon: Smartphone,
+      "The sentiment analysis feature helps me instantly understand customer feedback by classifying text as positive, negative, or neutral.",
+    author: 'Sofia Bennett',
+    company: 'NextWave Insights',
+    avatar: 'SB',
+  },
+  {
+    quote:
+      "With Granulate, I no longer need to rely on analysts - I can explore and understand my own data instantly, all by myself.",
+    author: 'Chloe Martinez',
+    company: 'SparkPoint Consulting',
+    avatar: 'CM',
+  },
+  {
+    quote:
+      "Creates polished data visualizations in seconds that would normally take me hours to build manually in Excel.",
+    author: 'Noah Carter',
+    company: 'SummitEdge Technologies',
+    avatar: 'NC',
+  },
+  {
+    quote:
+      "The AI-powered clustering runs seamlessly, giving me all the insights I need without slowing down my workflow.",
+    author: 'Ethan Hayes',
+    company: 'CoreLogic Systems',
+    avatar: 'EH',
   },
 ]
-
-const industryStats = [
-  {
-    industry: 'Restaurants',
-    stat: '847',
-    label: 'restaurants analyzing reviews',
-    icon: Utensils,
-  },
-  {
-    industry: 'Hotels',
-    stat: '156',
-    label: 'hotels improving guest experience',
-    icon: Building2,
-  },
-  {
-    industry: 'Apps',
-    stat: '312',
-    label: 'apps monitoring feedback',
-    icon: Smartphone,
-  },
-]
-
-function CheckIcon() {
-  return (
-    <svg className="sp-check" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-    </svg>
-  )
-}
 
 export function SocialProof() {
   return (
-    <section className="sp-section" id="social-proof">
-      <div className="sp-container">
-        <div className="sp-header">
-          <p className="sp-kicker">Early adopters</p>
-          <h2 className="sp-title">Trusted by teams who listen to their customers</h2>
+    <section className="social" id="social-proof">
+      <div className="social__container">
+        {/* Header */}
+        <div className="social__header">
+          <span className="section-label">// Testimonials //</span>
+          <h2 className="social__title">
+            Loved by teams at the
+            <br />world's best companies
+          </h2>
         </div>
 
-        <div className="sp-stats">
-          {industryStats.map((item) => (
-            <div key={item.industry} className="sp-stat-card">
-              <div className="sp-stat-icon" aria-hidden="true">
-                <item.icon size={22} />
-              </div>
-              <div>
-                <div className="sp-stat-value">{item.stat}</div>
-                <p className="sp-stat-label">{item.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="sp-testimonials">
-          {testimonials.map((t) => (
-            <div key={t.author} className="sp-card">
-              <div className="sp-badge">
-                <t.icon size={16} />
-                <span>{t.industry}</span>
-              </div>
-
-              <div className="sp-stars" aria-hidden="true">
-                {Array.from({ length: t.rating }).map((_, i) => (
-                  <Star key={i} size={20} className="sp-star-lucide" />
-                ))}
-              </div>
-
-              <p className="sp-quote">“{t.quote}”</p>
-
-              <div className="sp-author">
-                <div className="sp-avatar">{t.avatar}</div>
-                <div>
-                  <div className="sp-name">{t.author}</div>
-                  <div className="sp-role">
-                    {t.role}, {t.company}
+        {/* Testimonials Marquee */}
+        <div className="social__marquee">
+          <div className="social__track">
+            {[...testimonials, ...testimonials].map((t, i) => (
+              <div key={i} className="social__card">
+                <p className="social__quote">{t.quote}</p>
+                <div className="social__author">
+                  <div className="social__avatar">{t.avatar}</div>
+                  <div>
+                    <div className="social__name">{t.author}</div>
+                    <div className="social__company">{t.company}</div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="sp-metrics">
-          <div className="sp-metric">
-            <div className="sp-metric-value">4.8M+</div>
-            <p className="sp-metric-label">Reviews analyzed this month</p>
-          </div>
-
-          <div className="sp-divider" />
-
-          <div className="sp-metric">
-            <div className="sp-metric-value sp-metric-value--stars">
-              4.7 <Star size={18} className="sp-star-lucide" />
-            </div>
-            <p className="sp-metric-label">Average user rating</p>
-          </div>
-
-          <div className="sp-divider" />
-
-          <div className="sp-metric">
-            <div className="sp-metric-value">{'<'}2 min</div>
-            <p className="sp-metric-label">Setup time</p>
-          </div>
-        </div>
-
-        <div className="sp-trust">
-          <div className="sp-trust-item">
-            <CheckIcon />
-            <span>No credit card required</span>
-          </div>
-          <div className="sp-trust-item">
-            <CheckIcon />
-            <span>14-day free trial</span>
-          </div>
-          <div className="sp-trust-item">
-            <CheckIcon />
-            <span>Cancel anytime</span>
+            ))}
           </div>
         </div>
       </div>
