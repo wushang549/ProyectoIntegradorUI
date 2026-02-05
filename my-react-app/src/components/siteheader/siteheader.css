@@ -302,14 +302,25 @@
 
 .mobile-menu__cta .btn-primary {
   width: 100%;
+  color: white;
+  display: flex;
+  justify-content: left;
+}
+.mobile-menu__cta .btn-primary:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  color: white;
 }
 
 .mobile-menu__cta .btn-ghost {
   width: 100%;
+  display: flex;
+  justify-content: left;
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 900px) {
+@media (max-width: 1060px) {
   .site-header__container {
     grid-template-columns: 1fr auto;
   }
