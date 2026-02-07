@@ -51,7 +51,6 @@ export function SocialProof() {
       <div className="social__container">
         {/* Header */}
         <div className="social__header">
-          <span className="section-label">// Testimonials //</span>
           <h2 className="social__title">
             Loved by teams at the
             <br />world's best companies

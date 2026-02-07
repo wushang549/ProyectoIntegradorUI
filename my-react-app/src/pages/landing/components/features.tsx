@@ -107,7 +107,6 @@ export function Features() {
       <div className="features__container">
         {/* Header */}
         <div className="features__header">
-          <span className="section-label">// Features //</span>
           <h2 className="features__title">
             Granulate for every insight
           </h2>

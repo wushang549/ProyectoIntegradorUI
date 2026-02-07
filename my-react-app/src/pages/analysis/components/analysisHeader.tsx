@@ -1,4 +1,4 @@
-import { Layers, Loader2, Play, RotateCcw } from 'lucide-react'
+import { Loader2, Play, RotateCcw } from 'lucide-react'
 import './AnalysisHeader.css'
 import logo from '../../../assets/logo.svg'
 

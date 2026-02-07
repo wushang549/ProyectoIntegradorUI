@@ -127,10 +127,16 @@
   position: relative;
 }
 
-.site-header__nav a:hover {
+.site-header__nav a:hover,
+.site-header__nav a.active {
   color: #1e293b;
   background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.site-header__nav a.active {
+  color: #2563eb;
+  font-weight: 600;
 }
 
 /* ===== Actions (Right Segment) ===== */
@@ -145,6 +151,7 @@
   justify-content: center;
   gap: 8px;
   text-decoration: none;
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   font-weight: 500;
   font-size: 14px;
   transition: all 0.2s ease;
@@ -286,9 +293,15 @@
   transition: all 0.2s ease;
 }
 
-.mobile-menu__panel a:hover {
+.mobile-menu__panel a:hover,
+.mobile-menu__panel a.active {
   color: #1e293b;
   background: rgba(59, 130, 246, 0.05);
+}
+
+.mobile-menu__panel a.active {
+  color: #2563eb;
+  font-weight: 600;
 }
 
 .mobile-menu__cta {

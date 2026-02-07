@@ -115,7 +115,6 @@ export default function HowItWorks() {
       <div className="hiw__container">
         {/* Header */}
         <div className="hiw__header">
-          <span className="section-label">// How it works //</span>
           <h2 className="hiw__title">
             Analyze your data through
             <br />a simple conversation

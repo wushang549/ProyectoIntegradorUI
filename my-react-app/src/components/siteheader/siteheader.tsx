@@ -3,9 +3,13 @@ import { Link, useLocation } from 'react-router-dom'
 import logo from '../../assets/Granulate logo.png'
 import './siteheader.css'
 
+const SECTION_IDS = ['features', 'how-it-works', 'example'] as const
+const ACTIVE_OFFSET = 120
+
 export default function SiteHeader() {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [activeSection, setActiveSection] = useState<string | null>(null)
   const location = useLocation()
 
   useEffect(() => {
@@ -20,6 +24,29 @@ export default function SiteHeader() {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // Scroll spy: highlight nav link for the section in view (landing page only)
+  useEffect(() => {
+    if (location.pathname !== '/') {
+      setActiveSection(null)
+      return
+    }
+
+    const updateActiveSection = () => {
+      let current: string | null = null
+      for (const id of SECTION_IDS) {
+        const el = document.getElementById(id)
+        if (!el) continue
+        const top = el.getBoundingClientRect().top
+        if (top <= ACTIVE_OFFSET) current = id
+      }
+      setActiveSection(current)
+    }
+
+    updateActiveSection()
+    window.addEventListener('scroll', updateActiveSection, { passive: true })
+    return () => window.removeEventListener('scroll', updateActiveSection)
+  }, [location.pathname])
 
   useEffect(() => {
     const handleResize = () => {
@@ -67,9 +94,9 @@ export default function SiteHeader() {
         {/* Center Segment: Navigation */}
         <div className="site-header__segment site-header__segment--center">
           <nav className="site-header__nav">
-            <a href="#features">Features</a>
-            <a href="#how-it-works">How it works</a>
-            <a href="#example">Use cases</a>
+            <a href="#features" className={activeSection === 'features' ? 'active' : ''}>Features</a>
+            <a href="#how-it-works" className={activeSection === 'how-it-works' ? 'active' : ''}>How it works</a>
+            <a href="#example" className={activeSection === 'example' ? 'active' : ''}>Use cases</a>
           </nav>
         </div>
 
@@ -79,7 +106,7 @@ export default function SiteHeader() {
             Sign in
           </Link>
 
-          <Link to="/analysis" className="btn-primary">
+          <Link to="/signup" className="btn-primary">
             Create an Account
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -101,20 +128,20 @@ export default function SiteHeader() {
 
       <div className={`mobile-menu ${open ? 'open' : ''}`}>
         <div className="mobile-menu__panel">
-          <a href="#features" onClick={() => setOpen(false)}>
+          <a href="#features" className={activeSection === 'features' ? 'active' : ''} onClick={() => setOpen(false)}>
             Features
           </a>
-          <a href="#how-it-works" onClick={() => setOpen(false)}>
+          <a href="#how-it-works" className={activeSection === 'how-it-works' ? 'active' : ''} onClick={() => setOpen(false)}>
             How it works
           </a>
-          <a href="#example" onClick={() => setOpen(false)}>
+          <a href="#example" className={activeSection === 'example' ? 'active' : ''} onClick={() => setOpen(false)}>
             Use cases
           </a>
           <div className="mobile-menu__cta">
             <Link to="/login" className="btn-ghost btn-ghost--full" onClick={() => setOpen(false)}>
               Sign in
             </Link>
-            <Link to="/analysis" className="btn-primary btn-primary--full" onClick={() => setOpen(false)}>
+            <Link to="/signup" className="btn-primary btn-primary--full" onClick={() => setOpen(false)}>
               Create an Account
             </Link>
           </div>
