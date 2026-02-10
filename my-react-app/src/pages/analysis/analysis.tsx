@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import './analysis.css'
+import { granulateRequest } from '../../api/granulate'
+import { toAnalysisResults } from './transform'
+
 
 import AnalysisHeader from './components/analysisHeader'
 import AnalysisInput from './components/analysisInput'
 import RunSettings from './components/runSettings'
 import AnalysisOutput from './components/analysisOutput'
-
 import { mockDataBalanced, mockDataDetailed } from './mockData'
 import type { Granularity, LoadingStep } from './types'
 
@@ -20,24 +22,42 @@ export default function Analysis() {
   const [results, setResults] = useState(mockDataBalanced)
   const [error, setError] = useState('')
 
-  const runAnalysis = () => {
-    if (inputText.trim().length < 20) {
-      setError('Please enter at least 20 characters to analyze.')
-      return
-    }
+const runAnalysis = async () => {
+  const text = inputText.trim()
+  if (text.length < 20) {
+    setError('Please enter at least 20 characters to analyze.')
+    return
+  }
 
-    setError('')
-    setIsLoading(true)
+  setError('')
+  setIsLoading(true)
+  setHasResults(false)
+
+  try {
     setLoadingStep('extracting')
 
-    window.setTimeout(() => setLoadingStep('building'), 400)
-    window.setTimeout(() => setLoadingStep('grouping'), 800)
-    window.setTimeout(() => {
-      setIsLoading(false)
-      setHasResults(true)
-      setResults(granularity === 'detailed' ? mockDataDetailed : mockDataBalanced)
-    }, 1200)
+    await new Promise((r) => setTimeout(r, 200))
+    setLoadingStep('building')
+
+    const minSim =
+      granularity === 'detailed' ? 0.04 : granularity === 'broad' ? 0.1 : 0.06
+
+    const resp = await granulateRequest(text, minSim)
+
+    setLoadingStep('grouping')
+    await new Promise((r) => setTimeout(r, 150))
+
+    const mapped = toAnalysisResults(resp)
+    setResults(mapped)
+    setHasResults(true)
+  } catch (e) {
+    setError(e instanceof Error ? e.message : 'Request failed')
+  } finally {
+    setIsLoading(false)
   }
+}
+
+
 
   const reset = () => {
     setInputText('')
