@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import googleIcon from '../../assets/google.png'
 import appleIcon from '../../assets/apple.png'
 import logo from '../../assets/logo.svg'
+import granulateLogo from '../../assets/Granulate logo.png'
 import AuthLayout from '../auth/AuthLayout'
 import './login.css'
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <AuthLayout
@@ -15,7 +17,7 @@ export default function Login() {
       footerLink={{ to: '/signup', label: 'Sign up' }}
     >
       <Link to="/" className="auth-logo-link" aria-label="Go to home">
-        <img className="auth-logo-img" src={logo} alt="Granulate logo" />
+        <img className="auth-logo-img" src={granulateLogo} alt="Granulate logo" />
         <span className="auth-brand-name">Granulate</span>
       </Link>
 
@@ -39,7 +41,7 @@ export default function Login() {
         <span className="auth-divider-line" />
       </div>
 
-      <form className="auth-form" onSubmit={(e) => e.preventDefault()}>
+      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); navigate('/chat'); }}>
         <label className="auth-field">
           <span className="auth-label">Email</span>
           <input className="auth-input" type="email" placeholder="you@company.com" autoComplete="email" />
