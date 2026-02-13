@@ -1,9 +1,75 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import granulateLogo from '../../assets/Granulate logo.png'
 import './chat.css'
 
+const API_BASE_URL = 'http://127.0.0.1:8000/v1'
 const ALLOWED_TYPES = ['.csv', '.txt', '.pdf']
+const POLL_INTERVAL_MS = 1500
+const POLL_TIMEOUT_MS = 120000
+const DEFAULT_TOP_K_EVIDENCE = 6
+
+const RESULT_TABS = ['Overview', 'Map', 'Clusters', 'Granulate', 'Hierarchy'] as const
+
+type ResultTab = (typeof RESULT_TABS)[number]
+type ClusterId = string | number
+
+type ProjectCreated = {
+  project_id: string
+  status: string
+}
+
+type ProjectStatus = {
+  project_id: string
+  name?: string
+  status: string
+}
+
+type ResultPoint = {
+  x: number
+  y: number
+  cluster_id: ClusterId
+  text_preview?: string
+}
+
+type ResultCluster = {
+  cluster_id: ClusterId
+  cluster_label?: string
+  size?: number
+  count?: number
+}
+
+type ProjectResults = {
+  project_id: string
+  stats: Record<string, unknown>
+  points: ResultPoint[]
+  clusters: ResultCluster[]
+}
+
+type ClassifyResponse = {
+  cluster_id: ClusterId
+  cluster_label?: string
+  text_preview?: string
+  x?: number
+  y?: number
+  confidence_margin?: number
+}
+
+type GranulateGranule = {
+  aspect: string
+  excerpt?: string
+  evidence?: string[]
+  sentiment?: string
+  similarity?: number
+}
+
+type GranulateResponse = {
+  text: string
+  units: string[]
+  granules: GranulateGranule[]
+  taxonomy?: string[]
+  scenario_summary?: Record<string, number> | string
+}
 
 /* Dots arranged in concentric rings to form a circle */
 const ORB_DOT_POSITIONS = (() => {
@@ -57,11 +123,141 @@ function getRepulsion(
   }
 }
 
+function normalizeStatus(status: string | undefined) {
+  return (status ?? '').toLowerCase().trim()
+}
+
+function isFailedStatus(status: string | undefined) {
+  return normalizeStatus(status) === 'failed'
+}
+
+function isCompletedStatus(status: string | undefined) {
+  const value = normalizeStatus(status)
+  return ['completed', 'complete', 'succeeded', 'success', 'done', 'finished'].includes(value)
+}
+
+async function parseErrorMessage(res: Response) {
+  try {
+    const data = (await res.json()) as Record<string, unknown>
+    const backendMessage =
+      data.error_message ?? data.detail ?? data.message ?? data.error ?? data.status
+
+    if (typeof backendMessage === 'string' && backendMessage.trim()) {
+      return backendMessage
+    }
+  } catch {
+    // ignore invalid json
+  }
+
+  return `${res.status} ${res.statusText}`
+}
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, init)
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res))
+  }
+  return (await res.json()) as T
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function getClusterSize(cluster: ResultCluster) {
+  if (typeof cluster.size === 'number') return cluster.size
+  if (typeof cluster.count === 'number') return cluster.count
+  return 0
+}
+
+function getClusterLabel(cluster: ResultCluster) {
+  if (cluster.cluster_label && cluster.cluster_label.trim()) return cluster.cluster_label
+  return `Cluster ${cluster.cluster_id}`
+}
+
+function formatStatKey(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function formatNumber(value: number | undefined) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
+  return value.toFixed(3)
+}
+
+function buildAnalysisName(raw: string, file: File) {
+  const prompt = raw.trim()
+  if (prompt) return prompt.slice(0, 80)
+
+  const base = file.name.replace(/\.[^/.]+$/, '').trim()
+  if (base) return `${base} analysis`
+
+  return `Analysis ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`
+}
+
+function parseTaxonomyInput(raw: string): Record<string, string[]> | undefined {
+  const value = raw.trim()
+  if (!value) return undefined
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const entries = Object.entries(parsed as Record<string, unknown>)
+      const normalized: Record<string, string[]> = {}
+      for (const [key, item] of entries) {
+        if (Array.isArray(item)) {
+          const values = item
+            .filter((entry): entry is string => typeof entry === 'string')
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+          if (values.length > 0) normalized[key] = values
+        }
+      }
+      if (Object.keys(normalized).length > 0) return normalized
+    }
+  } catch {
+    // fallback below
+  }
+
+  const terms = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  if (terms.length === 0) return undefined
+  return { OTHER: terms }
+}
+
 export default function Chat() {
   const [query, setQuery] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [fileError, setFileError] = useState('')
+  const [requestError, setRequestError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [runStatus, setRunStatus] = useState('')
+
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [results, setResults] = useState<ProjectResults | null>(null)
+  const [activeTab, setActiveTab] = useState<ResultTab>('Overview')
+  const [selectedClusterId, setSelectedClusterId] = useState<ClusterId | null>(null)
+  const [selectedTextPreview, setSelectedTextPreview] = useState('')
+
+  const [classifyText, setClassifyText] = useState('')
+  const [classifyResult, setClassifyResult] = useState<ClassifyResponse | null>(null)
+  const [classifyError, setClassifyError] = useState('')
+  const [isClassifying, setIsClassifying] = useState(false)
+
+  const [granulateText, setGranulateText] = useState('')
+  const [minSimilarity, setMinSimilarity] = useState(0.06)
+  const [topKEvidence, setTopKEvidence] = useState(DEFAULT_TOP_K_EVIDENCE)
+  const [useTaxonomy, setUseTaxonomy] = useState(false)
+  const [taxonomyText, setTaxonomyText] = useState('')
+  const [granulateResult, setGranulateResult] = useState<GranulateResponse | null>(null)
+  const [granulateError, setGranulateError] = useState('')
+  const [isGranulating, setIsGranulating] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const orbRef = useRef<HTMLDivElement>(null)
   const [mouseInOrb, setMouseInOrb] = useState<{ x: number; y: number } | null>(null)
@@ -128,6 +324,252 @@ export default function Chat() {
 
   const onAttachClick = () => fileInputRef.current?.click()
 
+  const topClusters = useMemo(() => {
+    if (!results) return []
+    return [...results.clusters]
+      .sort((a, b) => getClusterSize(b) - getClusterSize(a))
+      .slice(0, 5)
+  }, [results])
+
+  const statsEntries = useMemo(() => {
+    if (!results) return [] as Array<[string, string]>
+
+    const primitiveStats = Object.entries(results.stats)
+      .filter(([, value]) => ['number', 'string', 'boolean'].includes(typeof value))
+      .map(([key, value]) => [formatStatKey(key), String(value)] as [string, string])
+
+    const fallbackStats: Array<[string, string]> = [
+      ['Points', String(results.points.length)],
+      ['Clusters', String(results.clusters.length)],
+    ]
+
+    return primitiveStats.length > 0 ? primitiveStats : fallbackStats
+  }, [results])
+
+  const visiblePoints = useMemo(() => {
+    if (!results) return []
+    if (selectedClusterId === null) return results.points
+    return results.points.filter((point) => String(point.cluster_id) === String(selectedClusterId))
+  }, [results, selectedClusterId])
+
+  const granulesByAspect = useMemo(() => {
+    if (!granulateResult) return [] as Array<[string, GranulateGranule[]]>
+
+    const grouped = new Map<string, GranulateGranule[]>()
+    for (const granule of granulateResult.granules) {
+      const aspect = granule.aspect?.trim() || 'Uncategorized'
+      const list = grouped.get(aspect)
+      if (list) list.push(granule)
+      else grouped.set(aspect, [granule])
+    }
+
+    return Array.from(grouped.entries()).sort((a, b) => b[1].length - a[1].length)
+  }, [granulateResult])
+
+  const runProjectFlow = useCallback(async () => {
+    if (isSubmitting) return
+
+    setRequestError('')
+    setFileError('')
+
+    const file = attachedFiles[0]
+    const promptText = query.trim()
+    if (!file && !promptText) {
+      setFileError('Please attach a file or enter text to granulate.')
+      return
+    }
+
+    if (!file && promptText) {
+      setIsSubmitting(true)
+      setRunStatus('granulating')
+      setResults({
+        project_id: 'text-only',
+        stats: {},
+        points: [],
+        clusters: [],
+      })
+      setProjectId(null)
+      setActiveTab('Granulate')
+      setSelectedClusterId(null)
+      setSelectedTextPreview('')
+      setClassifyResult(null)
+      setClassifyError('')
+      setGranulateText(promptText)
+      setGranulateResult(null)
+      setGranulateError('')
+
+      try {
+        const taxonomy = useTaxonomy ? parseTaxonomyInput(taxonomyText) : undefined
+        const payload: {
+          text: string
+          taxonomy?: Record<string, string[]>
+          top_k_evidence: number
+          min_similarity: number
+        } = {
+          text: promptText,
+          top_k_evidence: topKEvidence,
+          min_similarity: minSimilarity,
+        }
+        if (taxonomy) payload.taxonomy = taxonomy
+
+        const response = await requestJson<GranulateResponse>('/granulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        setGranulateResult(response)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Granulate request failed'
+        setGranulateError(message)
+      } finally {
+        setIsSubmitting(false)
+      }
+      return
+    }
+
+    const analysisName = buildAnalysisName(query, file)
+
+    setIsSubmitting(true)
+    setRunStatus('creating_project')
+    setResults(null)
+    setProjectId(null)
+    setActiveTab('Overview')
+    setSelectedClusterId(null)
+    setSelectedTextPreview('')
+    setClassifyResult(null)
+    setClassifyError('')
+    setGranulateResult(null)
+    setGranulateError('')
+    setGranulateText(query.trim())
+
+    try {
+      const formData = new FormData()
+      formData.append('analysis_name', analysisName)
+      formData.append('file', file)
+
+      const created = await requestJson<ProjectCreated>('/projects', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const nextProjectId = created.project_id
+      setProjectId(nextProjectId)
+
+      const runResponse = await requestJson<ProjectStatus>(`/projects/${nextProjectId}/run`, {
+        method: 'POST',
+      })
+      setRunStatus(runResponse.status)
+
+      const start = Date.now()
+      let terminalStatus: ProjectStatus | null = null
+
+      while (Date.now() - start < POLL_TIMEOUT_MS) {
+        const current = await requestJson<ProjectStatus>(`/projects/${nextProjectId}`)
+        setRunStatus(current.status)
+
+        if (isFailedStatus(current.status)) {
+          throw new Error('Project analysis failed.')
+        }
+
+        if (isCompletedStatus(current.status)) {
+          terminalStatus = current
+          break
+        }
+
+        await wait(POLL_INTERVAL_MS)
+      }
+
+      if (!terminalStatus) {
+        throw new Error('Project analysis timed out after 120 seconds.')
+      }
+
+      const nextResults = await requestJson<ProjectResults>(`/projects/${nextProjectId}/results`)
+      setResults(nextResults)
+      setRunStatus(terminalStatus.status)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Request failed'
+      setRequestError(message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [attachedFiles, isSubmitting, minSimilarity, query, taxonomyText, topKEvidence, useTaxonomy])
+
+  const runClassify = useCallback(async () => {
+    if (!projectId || isClassifying) return
+
+    const text = classifyText.trim()
+    if (!text) {
+      setClassifyError('Enter text to classify.')
+      return
+    }
+
+    setIsClassifying(true)
+    setClassifyError('')
+    setClassifyResult(null)
+
+    try {
+      const response = await requestJson<ClassifyResponse>(`/projects/${projectId}/classify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      setClassifyResult(response)
+      setSelectedClusterId(response.cluster_id)
+      setSelectedTextPreview(response.text_preview ?? text)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Classification failed'
+      setClassifyError(message)
+    } finally {
+      setIsClassifying(false)
+    }
+  }, [classifyText, isClassifying, projectId])
+
+  const runGranulate = useCallback(async () => {
+    if (isGranulating) return
+
+    const text = granulateText.trim()
+    if (!text) {
+      setGranulateError('Enter text to granulate.')
+      return
+    }
+
+    setIsGranulating(true)
+    setGranulateError('')
+
+    const taxonomy = useTaxonomy ? parseTaxonomyInput(taxonomyText) : undefined
+
+    const payload: {
+      text: string
+      taxonomy?: Record<string, string[]>
+      top_k_evidence: number
+      min_similarity: number
+    } = {
+      text,
+      top_k_evidence: topKEvidence,
+      min_similarity: minSimilarity,
+    }
+
+    if (taxonomy) {
+      payload.taxonomy = taxonomy
+    }
+
+    const path = projectId ? `/projects/${projectId}/granulate` : '/granulate'
+
+    try {
+      const response = await requestJson<GranulateResponse>(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      setGranulateResult(response)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Granulate request failed'
+      setGranulateError(message)
+    } finally {
+      setIsGranulating(false)
+    }
+  }, [granulateText, isGranulating, minSimilarity, projectId, taxonomyText, topKEvidence, useTaxonomy])
+
   return (
     <div className="chat-page">
       <aside className="chat-sidebar">
@@ -173,110 +615,428 @@ export default function Chat() {
         </header>
 
         <main className="chat-content">
-          <div className="chat-greeting-wrap">
-            <div
-              ref={orbRef}
-              className="chat-greeting-orb"
-              aria-hidden
-              onMouseMove={handleOrbMouseMove}
-              onMouseLeave={handleOrbMouseLeave}
-            >
-              {ORB_DOT_POSITIONS.map((pos, i) => {
-                const repulse = mouseInOrb
-                  ? getRepulsion(pos.x, pos.y, mouseInOrb.x, mouseInOrb.y)
-                  : { x: 0, y: 0 }
-                return (
-                  <span
-                    key={i}
-                    className="chat-orb-dot-wrapper"
-                    style={{
-                      left: `${pos.x}%`,
-                      top: `${pos.y}%`,
-                      transform: `translate(-50%, -50%) translate(${repulse.x}px, ${repulse.y}px)`,
-                    }}
-                  >
-                    <span
-                      className="chat-orb-dot"
-                      style={{ animationDelay: `${i * 0.04}s` }}
-                    />
-                  </span>
-                )
-              })}
-            </div>
-            <p className="chat-greeting">
-              {getGreeting()}, <span className="chat-greeting-name">there</span>
-            </p>
-            <h2 className="chat-headline">
-              What are we going to <em className="chat-headline-accent">analyze</em> today?
-            </h2>
-          </div>
+          {!results && (
+            <>
+              <div className="chat-greeting-wrap">
+                <div
+                  ref={orbRef}
+                  className="chat-greeting-orb"
+                  aria-hidden
+                  onMouseMove={handleOrbMouseMove}
+                  onMouseLeave={handleOrbMouseLeave}
+                >
+                  {ORB_DOT_POSITIONS.map((pos, i) => {
+                    const repulse = mouseInOrb
+                      ? getRepulsion(pos.x, pos.y, mouseInOrb.x, mouseInOrb.y)
+                      : { x: 0, y: 0 }
+                    return (
+                      <span
+                        key={i}
+                        className="chat-orb-dot-wrapper"
+                        style={{
+                          left: `${pos.x}%`,
+                          top: `${pos.y}%`,
+                          transform: `translate(-50%, -50%) translate(${repulse.x}px, ${repulse.y}px)`,
+                        }}
+                      >
+                        <span className="chat-orb-dot" style={{ animationDelay: `${i * 0.04}s` }} />
+                      </span>
+                    )
+                  })}
+                </div>
+                <p className="chat-greeting">
+                  {getGreeting()}, <span className="chat-greeting-name">there</span>
+                </p>
+                <h2 className="chat-headline">
+                  What are we going to <em className="chat-headline-accent">analyze</em> today?
+                </h2>
+              </div>
 
-          <div
-            className={`chat-input-wrap ${isDragging ? 'chat-input-wrap--dragging' : ''}`}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,.txt,.pdf,text/csv,text/plain,application/pdf"
-              multiple
-              className="chat-file-input"
-              aria-label="Attach files"
-              onChange={(e) => {
-                addFiles(e.target.files)
-                e.target.value = ''
-              }}
-            />
-            <div className="chat-input-box">
-              <span className="chat-input-icon" aria-hidden>
-                <ChatIconSpark />
-              </span>
-              <input
-                type="text"
-                className="chat-input"
-                placeholder="Load your Data and analyze it like a pro in seconds"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Ask AI"
-              />
-            </div>
-            <div className="chat-input-toolbar">
-              <button
-                type="button"
-                className="chat-toolbar-btn"
-                onClick={onAttachClick}
-                aria-label="Attach files (CSV, TXT, PDF)"
+              <div
+                className={`chat-input-wrap ${isDragging ? 'chat-input-wrap--dragging' : ''}`}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
               >
-                <ChatIconAttach />
-                <span>Attach</span>
-              </button>
-              <span className="chat-toolbar-hint">CSV, TXT or PDF</span>
-              <button type="button" className="chat-send-btn" aria-label="Send">
-                <ChatIconSend />
-              </button>
-            </div>
-            {attachedFiles.length > 0 && (
-              <div className="chat-attached-list">
-                {attachedFiles.map((f, i) => (
-                  <span key={`${f.name}-${i}`} className="chat-attached-tag">
-                    {f.name}
-                    <button
-                      type="button"
-                      className="chat-attached-remove"
-                      onClick={() => removeFile(i)}
-                      aria-label={`Remove ${f.name}`}
-                    >
-                      ×
-                    </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.txt,.pdf,text/csv,text/plain,application/pdf"
+                  multiple
+                  className="chat-file-input"
+                  aria-label="Attach files"
+                  onChange={(e) => {
+                    addFiles(e.target.files)
+                    e.target.value = ''
+                  }}
+                />
+                <div className="chat-input-box">
+                  <span className="chat-input-icon" aria-hidden>
+                    <ChatIconSpark />
                   </span>
+                  <input
+                    type="text"
+                    className="chat-input"
+                    placeholder="Load your Data and analyze it like a pro in seconds"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    aria-label="Ask AI"
+                  />
+                </div>
+                <div className="chat-input-toolbar">
+                  <button
+                    type="button"
+                    className="chat-toolbar-btn"
+                    onClick={onAttachClick}
+                    aria-label="Attach files (CSV, TXT, PDF)"
+                    disabled={isSubmitting}
+                  >
+                    <ChatIconAttach />
+                    <span>Attach</span>
+                  </button>
+                  <span className="chat-toolbar-hint">CSV, TXT or PDF</span>
+                  <button
+                    type="button"
+                    className="chat-send-btn"
+                    aria-label="Send"
+                    onClick={runProjectFlow}
+                    disabled={isSubmitting}
+                  >
+                    <ChatIconSend />
+                  </button>
+                </div>
+                {isSubmitting && (
+                  <p className="chat-run-status" role="status">
+                    Running analysis{runStatus ? ` (${runStatus})` : '...'}
+                  </p>
+                )}
+                {attachedFiles.length > 0 && (
+                  <div className="chat-attached-list">
+                    {attachedFiles.map((f, i) => (
+                      <span key={`${f.name}-${i}`} className="chat-attached-tag">
+                        {f.name}
+                        <button
+                          type="button"
+                          className="chat-attached-remove"
+                          onClick={() => removeFile(i)}
+                          aria-label={`Remove ${f.name}`}
+                          disabled={isSubmitting}
+                        >
+                          x
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {fileError && (
+                  <p className="chat-file-error" role="alert">
+                    {fileError}
+                  </p>
+                )}
+                {requestError && (
+                  <p className="chat-file-error" role="alert">
+                    {requestError}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
+          {results && (
+            <section className="chat-results-wrap">
+              <div className="chat-tabs" role="tablist" aria-label="Results Explorer Tabs">
+                {RESULT_TABS.map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    className={`chat-toolbar-btn ${activeTab === tab ? 'chat-toolbar-btn--active' : ''}`}
+                    onClick={() => setActiveTab(tab)}
+                    aria-selected={activeTab === tab}
+                  >
+                    {tab}
+                  </button>
                 ))}
               </div>
-            )}
-            {fileError && <p className="chat-file-error" role="alert">{fileError}</p>}
-          </div>
 
+              {activeTab === 'Overview' && (
+                <div className="chat-result-panel">
+                  <h3 className="chat-result-title">Overview</h3>
+                  <div className="chat-stats-grid">
+                    {statsEntries.map(([key, value]) => (
+                      <div key={key} className="chat-stat-card">
+                        <span className="chat-stat-key">{key}</span>
+                        <span className="chat-stat-value">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h4 className="chat-result-subtitle">Top clusters</h4>
+                  <div className="chat-list-grid">
+                    {topClusters.length === 0 && <p className="chat-muted-text">No clusters available.</p>}
+                    {topClusters.map((cluster) => (
+                      <button
+                        key={String(cluster.cluster_id)}
+                        type="button"
+                        className="chat-list-item"
+                        onClick={() => {
+                          setSelectedClusterId(cluster.cluster_id)
+                          setActiveTab('Map')
+                        }}
+                      >
+                        <span>{getClusterLabel(cluster)}</span>
+                        <strong>{getClusterSize(cluster)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Map' && (
+                <div className="chat-result-panel">
+                  <h3 className="chat-result-title">Map</h3>
+                  <p className="chat-muted-text">
+                    {selectedClusterId === null
+                      ? `Showing ${visiblePoints.length} points`
+                      : `Showing ${visiblePoints.length} points for cluster ${selectedClusterId}`}
+                  </p>
+                  <div className="chat-map-table" role="table" aria-label="Map points">
+                    <div className="chat-map-row chat-map-row--head" role="row">
+                      <span>X</span>
+                      <span>Y</span>
+                      <span>Cluster</span>
+                      <span>Preview</span>
+                    </div>
+                    {visiblePoints.length === 0 && (
+                      <div className="chat-map-row" role="row">
+                        <span className="chat-muted-text">No points available.</span>
+                      </div>
+                    )}
+                    {visiblePoints.slice(0, 200).map((point, index) => {
+                      const isSelected = selectedTextPreview === (point.text_preview ?? '')
+                      return (
+                        <button
+                          key={`${point.cluster_id}-${index}-${point.x}-${point.y}`}
+                          type="button"
+                          className={`chat-map-row chat-map-row--button ${isSelected ? 'chat-map-row--active' : ''}`}
+                          onClick={() => {
+                            setSelectedClusterId(point.cluster_id)
+                            setSelectedTextPreview(point.text_preview ?? '')
+                          }}
+                        >
+                          <span>{formatNumber(point.x)}</span>
+                          <span>{formatNumber(point.y)}</span>
+                          <span>{point.cluster_id}</span>
+                          <span>{point.text_preview ?? '-'}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'Clusters' && (
+                <div className="chat-result-panel">
+                  <h3 className="chat-result-title">Clusters</h3>
+                  <div className="chat-list-grid">
+                    {results.clusters.length === 0 && <p className="chat-muted-text">No clusters available.</p>}
+                    {results.clusters.map((cluster) => {
+                      const isActive =
+                        selectedClusterId !== null && String(selectedClusterId) === String(cluster.cluster_id)
+                      return (
+                        <button
+                          key={String(cluster.cluster_id)}
+                          type="button"
+                          className={`chat-list-item ${isActive ? 'chat-list-item--active' : ''}`}
+                          onClick={() => {
+                            setSelectedClusterId(cluster.cluster_id)
+                            setActiveTab('Map')
+                          }}
+                        >
+                          <span>{getClusterLabel(cluster)}</span>
+                          <strong>{getClusterSize(cluster)}</strong>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <h4 className="chat-result-subtitle">Classify new text</h4>
+                  <div className="chat-inline-form">
+                    <input
+                      type="text"
+                      className="chat-input chat-inline-input"
+                      value={classifyText}
+                      onChange={(e) => setClassifyText(e.target.value)}
+                      placeholder="Type text to classify"
+                      aria-label="Classify new text"
+                    />
+                    <button
+                      type="button"
+                      className="chat-send-btn chat-send-btn--compact"
+                      onClick={runClassify}
+                      disabled={isClassifying}
+                    >
+                      <ChatIconSend />
+                    </button>
+                  </div>
+                  {classifyError && (
+                    <p className="chat-file-error" role="alert">
+                      {classifyError}
+                    </p>
+                  )}
+                  {classifyResult && (
+                    <p className="chat-muted-text">
+                      Predicted: {classifyResult.cluster_label ?? `Cluster ${classifyResult.cluster_id}`} |
+                      Confidence margin:{' '}
+                      {typeof classifyResult.confidence_margin === 'number'
+                        ? classifyResult.confidence_margin.toFixed(3)
+                        : 'N/A'}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'Granulate' && (
+                <div className="chat-result-panel">
+                  <h3 className="chat-result-title">Granulate</h3>
+                  <textarea
+                    className="chat-granulate-textarea"
+                    value={granulateText}
+                    onChange={(e) => setGranulateText(e.target.value)}
+                    placeholder="Enter text to granulate"
+                    aria-label="Granulate input text"
+                    rows={4}
+                  />
+
+                  <div className="chat-controls-grid">
+                    <label className="chat-control-block">
+                      <span>min_similarity: {minSimilarity.toFixed(2)}</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={minSimilarity}
+                        onChange={(e) => setMinSimilarity(Number(e.target.value))}
+                      />
+                    </label>
+
+                    <label className="chat-control-block">
+                      <span>top_k_evidence</span>
+                      <select
+                        value={topKEvidence}
+                        onChange={(e) => setTopKEvidence(Number(e.target.value))}
+                        className="chat-select"
+                      >
+                        <option value={3}>3</option>
+                        <option value={6}>6</option>
+                        <option value={10}>10</option>
+                      </select>
+                    </label>
+
+                    <label className="chat-control-inline">
+                      <input
+                        type="checkbox"
+                        checked={useTaxonomy}
+                        onChange={(e) => setUseTaxonomy(e.target.checked)}
+                      />
+                      <span>Include taxonomy</span>
+                    </label>
+                  </div>
+
+                  {useTaxonomy && (
+                    <input
+                      type="text"
+                      className="chat-input chat-inline-input"
+                      value={taxonomyText}
+                      onChange={(e) => setTaxonomyText(e.target.value)}
+                      placeholder='Taxonomy JSON (e.g. {"OTHER":["general"]})'
+                      aria-label="Taxonomy"
+                    />
+                  )}
+
+                  <div className="chat-granulate-actions">
+                    <button
+                      type="button"
+                      className="chat-send-btn chat-send-btn--compact"
+                      onClick={runGranulate}
+                      disabled={isGranulating}
+                      aria-label="Run granulate"
+                    >
+                      <ChatIconSend />
+                    </button>
+                  </div>
+
+                  {granulateError && (
+                    <p className="chat-file-error" role="alert">
+                      {granulateError}
+                    </p>
+                  )}
+
+                  {granulateResult && (
+                    <div className="chat-granulate-results">
+                      {granulateResult.scenario_summary && (
+                        <p className="chat-muted-text">
+                          {typeof granulateResult.scenario_summary === 'string'
+                            ? granulateResult.scenario_summary
+                            : Object.entries(granulateResult.scenario_summary)
+                                .map(([name, value]) => `${name}: ${value}`)
+                                .join(' | ')}
+                        </p>
+                      )}
+
+                      <h4 className="chat-result-subtitle">Units</h4>
+                      <div className="chat-attached-list">
+                        {granulateResult.units.length === 0 && (
+                          <p className="chat-muted-text">No units available.</p>
+                        )}
+                        {granulateResult.units.map((unit, index) => (
+                          <span key={`${unit}-${index}`} className="chat-attached-tag">
+                            {unit}
+                          </span>
+                        ))}
+                      </div>
+
+                      <h4 className="chat-result-subtitle">Granules by aspect</h4>
+                      <div className="chat-granule-groups">
+                        {granulesByAspect.length === 0 && (
+                          <p className="chat-muted-text">No granules available.</p>
+                        )}
+                        {granulesByAspect.map(([aspect, granules]) => (
+                          <details key={aspect} className="chat-granule-group" open>
+                            <summary>
+                              {aspect} ({granules.length})
+                            </summary>
+                            <ul className="chat-granule-list">
+                              {granules.map((granule, index) => (
+                                <li key={`${aspect}-${index}`}>
+                                  <span>{granule.sentiment ?? 'neutral'}</span>
+                                  <span>{granule.excerpt ?? ''}</span>
+                                  {granule.evidence && granule.evidence.length > 0 && (
+                                    <span>{granule.evidence.join(', ')}</span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'Hierarchy' && (
+                <div className="chat-result-panel">
+                  <h3 className="chat-result-title">Hierarchy</h3>
+                  <p className="chat-muted-text">
+                    Hierarchical dendrogram coming soon. For now, adjust granularity using Granulate
+                    (min_similarity) and explore clusters in the Map/Clusters tabs.
+                  </p>
+                </div>
+              )}
+            </section>
+          )}
         </main>
       </div>
     </div>
