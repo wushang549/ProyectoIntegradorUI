@@ -597,7 +597,7 @@ export default function Chat() {
       const next = { ...prev }
       for (const section of aspectAccordions) {
         if (next[section.aspect] === undefined) {
-          next[section.aspect] = section.aspect === aspectAccordions[0].aspect
+          next[section.aspect] = true
         }
       }
       return next
