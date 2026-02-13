@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react'
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import granulateLogo from '../../assets/Granulate logo.png'
 import './chat.css'
@@ -60,7 +60,11 @@ type GranulateGranule = {
   excerpt?: string
   evidence?: string[]
   sentiment?: string
+  sentiment_score?: number
+  confidence?: number
   similarity?: number
+  lexical_overlap?: number
+  scenarios?: string[]
 }
 
 type GranulateResponse = {
@@ -69,6 +73,29 @@ type GranulateResponse = {
   granules: GranulateGranule[]
   taxonomy?: string[]
   scenario_summary?: Record<string, number> | string
+  aspect_summary?: Record<
+    string,
+    {
+      count?: number
+      avg_sentiment?: number | string
+      top_evidence?: string[]
+    }
+  >
+  highlights?: GranulateGranule[]
+}
+
+type ViewMode = 'chat' | 'analysis'
+type SortMode = 'confidence' | 'similarity' | 'sentiment'
+type SentimentFilter = 'all' | 'positive' | 'neutral' | 'negative'
+type SentimentValue = 'positive' | 'neutral' | 'negative'
+
+type AspectSummary = {
+  aspect: string
+  count: number
+  avgSentimentScore: number
+  avgSentimentLabel: string
+  topEvidence: string[]
+  granules: GranulateGranule[]
 }
 
 /* Dots arranged in concentric rings to form a circle */
@@ -181,6 +208,26 @@ function formatStatKey(key: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+const ASPECT_LABEL_OVERRIDES: Record<string, string> = {
+  PRICE_VALUE: 'Price & value',
+  WAIT_TIME: 'Wait time',
+  FOOD_QUALITY: 'Food quality',
+  RETURN_INTENT: 'Return intent',
+}
+
+function formatAspectLabel(aspect: string): string {
+  const normalized = aspect.trim()
+  if (!normalized) return 'Uncategorized'
+
+  const mapped = ASPECT_LABEL_OVERRIDES[normalized.toUpperCase()]
+  if (mapped) return mapped
+
+  return normalized
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
 function formatNumber(value: number | undefined) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-'
   return value.toFixed(3)
@@ -229,8 +276,63 @@ function parseTaxonomyInput(raw: string): Record<string, string[]> | undefined {
   return { OTHER: terms }
 }
 
+function normalizeSentiment(value: string | undefined): SentimentValue {
+  const normalized = (value ?? '').toLowerCase().trim()
+  if (normalized === 'positive') return 'positive'
+  if (normalized === 'negative') return 'negative'
+  return 'neutral'
+}
+
+function sentimentLabel(value: string | undefined) {
+  const normalized = normalizeSentiment(value)
+  if (normalized === 'positive') return 'Positive'
+  if (normalized === 'negative') return 'Negative'
+  return 'Neutral'
+}
+
+function sentimentScore(granule: GranulateGranule) {
+  if (typeof granule.sentiment_score === 'number') return granule.sentiment_score
+  const normalized = normalizeSentiment(granule.sentiment)
+  if (normalized === 'positive') return 1
+  if (normalized === 'negative') return -1
+  return 0
+}
+
+function averageSentiment(granules: GranulateGranule[]) {
+  if (granules.length === 0) return 0
+  const total = granules.reduce((sum, granule) => sum + sentimentScore(granule), 0)
+  return total / granules.length
+}
+
+function avgSentimentLabel(score: number) {
+  if (score > 0.15) return 'Positive'
+  if (score < -0.15) return 'Negative'
+  return 'Neutral'
+}
+
+function granuleConfidence(granule: GranulateGranule) {
+  if (typeof granule.confidence === 'number') return granule.confidence
+  if (typeof granule.similarity === 'number') return granule.similarity
+  return 0
+}
+
+function topEvidence(granules: GranulateGranule[]) {
+  const evidenceCount = new Map<string, number>()
+  for (const granule of granules) {
+    for (const evidenceItem of granule.evidence ?? []) {
+      const trimmed = evidenceItem.trim()
+      if (!trimmed) continue
+      evidenceCount.set(trimmed, (evidenceCount.get(trimmed) ?? 0) + 1)
+    }
+  }
+  return Array.from(evidenceCount.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([term]) => term)
+}
+
 export default function Chat() {
   const [query, setQuery] = useState('')
+  const [viewMode, setViewMode] = useState<ViewMode>('chat')
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [fileError, setFileError] = useState('')
@@ -257,9 +359,17 @@ export default function Chat() {
   const [granulateResult, setGranulateResult] = useState<GranulateResponse | null>(null)
   const [granulateError, setGranulateError] = useState('')
   const [isGranulating, setIsGranulating] = useState(false)
+  const [granuleSortMode, setGranuleSortMode] = useState<SortMode>('confidence')
+  const [granuleSentimentFilter, setGranuleSentimentFilter] = useState<SentimentFilter>('all')
+  const [showOtherAspects, setShowOtherAspects] = useState(false)
+  const [openAspects, setOpenAspects] = useState<Record<string, boolean>>({})
+  const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({})
+  const [expandedSummaryEvidence, setExpandedSummaryEvidence] = useState<Record<string, boolean>>({})
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const queryInputRef = useRef<HTMLTextAreaElement>(null)
   const orbRef = useRef<HTMLDivElement>(null)
+  const aspectRefs = useRef<Record<string, HTMLElement | null>>({})
   const [mouseInOrb, setMouseInOrb] = useState<{ x: number; y: number } | null>(null)
 
   const handleOrbMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -324,6 +434,22 @@ export default function Chat() {
 
   const onAttachClick = () => fileInputRef.current?.click()
 
+  const autoResize = useCallback((textarea: HTMLTextAreaElement | null) => {
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 300)}px`
+    textarea.style.overflowY = textarea.scrollHeight > 300 ? 'auto' : 'hidden'
+  }, [])
+
+  useEffect(() => {
+    autoResize(queryInputRef.current)
+  }, [query, autoResize])
+
+  useEffect(() => {
+    if (viewMode !== 'chat') return
+    autoResize(queryInputRef.current)
+  }, [autoResize, viewMode])
+
   const topClusters = useMemo(() => {
     if (!results) return []
     return [...results.clusters]
@@ -352,8 +478,8 @@ export default function Chat() {
     return results.points.filter((point) => String(point.cluster_id) === String(selectedClusterId))
   }, [results, selectedClusterId])
 
-  const granulesByAspect = useMemo(() => {
-    if (!granulateResult) return [] as Array<[string, GranulateGranule[]]>
+  const aspectSummaries = useMemo(() => {
+    if (!granulateResult) return [] as AspectSummary[]
 
     const grouped = new Map<string, GranulateGranule[]>()
     for (const granule of granulateResult.granules) {
@@ -363,8 +489,143 @@ export default function Chat() {
       else grouped.set(aspect, [granule])
     }
 
-    return Array.from(grouped.entries()).sort((a, b) => b[1].length - a[1].length)
+    const backendSummary = granulateResult.aspect_summary ?? {}
+    const summaries: AspectSummary[] = []
+
+    for (const [aspect, granules] of grouped.entries()) {
+      const backend = backendSummary[aspect]
+      const backendCount = typeof backend?.count === 'number' ? backend.count : undefined
+      const backendAvgRaw = backend?.avg_sentiment
+      const backendAvg =
+        typeof backendAvgRaw === 'number'
+          ? backendAvgRaw
+          : typeof backendAvgRaw === 'string'
+            ? normalizeSentiment(backendAvgRaw) === 'positive'
+              ? 1
+              : normalizeSentiment(backendAvgRaw) === 'negative'
+                ? -1
+                : 0
+            : averageSentiment(granules)
+      const evidence = Array.isArray(backend?.top_evidence) && backend.top_evidence.length > 0
+        ? backend.top_evidence
+        : topEvidence(granules)
+
+      summaries.push({
+        aspect,
+        count: backendCount ?? granules.length,
+        avgSentimentScore: backendAvg,
+        avgSentimentLabel: avgSentimentLabel(backendAvg),
+        topEvidence: evidence,
+        granules,
+      })
+    }
+
+    for (const [aspect, backend] of Object.entries(backendSummary)) {
+      if (grouped.has(aspect)) continue
+      if (typeof backend?.count !== 'number' || backend.count <= 0) continue
+      const backendAvgRaw = backend.avg_sentiment
+      const backendAvg =
+        typeof backendAvgRaw === 'number'
+          ? backendAvgRaw
+          : typeof backendAvgRaw === 'string'
+            ? normalizeSentiment(backendAvgRaw) === 'positive'
+              ? 1
+              : normalizeSentiment(backendAvgRaw) === 'negative'
+                ? -1
+                : 0
+            : 0
+      summaries.push({
+        aspect,
+        count: backend.count,
+        avgSentimentScore: backendAvg,
+        avgSentimentLabel: avgSentimentLabel(backendAvg),
+        topEvidence: backend.top_evidence ?? [],
+        granules: [],
+      })
+    }
+
+    return summaries.sort((a, b) => b.count - a.count)
   }, [granulateResult])
+
+  const visibleAspectSummaries = useMemo(() => {
+    if (showOtherAspects) return aspectSummaries
+    return aspectSummaries.filter((summary) => summary.aspect.trim().toUpperCase() !== 'OTHER')
+  }, [aspectSummaries, showOtherAspects])
+
+  const highlightedGranules = useMemo(() => {
+    if (!granulateResult) return [] as GranulateGranule[]
+
+    const source = Array.isArray(granulateResult.highlights) && granulateResult.highlights.length > 0
+      ? granulateResult.highlights
+      : granulateResult.granules
+
+    return [...source].sort((a, b) => granuleConfidence(b) - granuleConfidence(a)).slice(0, 3)
+  }, [granulateResult])
+
+  const aspectAccordions = useMemo(() => {
+    return visibleAspectSummaries
+      .map((summary) => {
+        const filtered = summary.granules.filter((granule) => {
+          if (granuleSentimentFilter === 'all') return true
+          return normalizeSentiment(granule.sentiment) === granuleSentimentFilter
+        })
+
+        const sorted = [...filtered].sort((a, b) => {
+          if (granuleSortMode === 'similarity') {
+            return (b.similarity ?? 0) - (a.similarity ?? 0)
+          }
+          if (granuleSortMode === 'sentiment') {
+            return sentimentScore(b) - sentimentScore(a)
+          }
+          return granuleConfidence(b) - granuleConfidence(a)
+        })
+
+        const avgScore = averageSentiment(sorted.length > 0 ? sorted : summary.granules)
+        return {
+          ...summary,
+          granules: sorted,
+          displayCount: sorted.length,
+          displayAvgSentimentLabel: avgSentimentLabel(avgScore),
+        }
+      })
+      .filter((summary) => summary.granules.length > 0 || summary.count > 0)
+  }, [granuleSentimentFilter, granuleSortMode, visibleAspectSummaries])
+
+  useEffect(() => {
+    if (aspectAccordions.length === 0) return
+    setOpenAspects((prev) => {
+      const next = { ...prev }
+      for (const section of aspectAccordions) {
+        if (next[section.aspect] === undefined) {
+          next[section.aspect] = section.aspect === aspectAccordions[0].aspect
+        }
+      }
+      return next
+    })
+  }, [aspectAccordions])
+
+  const toggleAspect = useCallback((aspect: string) => {
+    setOpenAspects((prev) => ({
+      ...prev,
+      [aspect]: !prev[aspect],
+    }))
+  }, [])
+
+  const jumpToAspect = useCallback((aspect: string) => {
+    const normalizedAspect = aspect.trim() || 'Uncategorized'
+    if (normalizedAspect.toUpperCase() === 'OTHER') {
+      setShowOtherAspects(true)
+    }
+
+    setOpenAspects((prev) => ({
+      ...prev,
+      [normalizedAspect]: true,
+    }))
+    requestAnimationFrame(() => {
+      const section = aspectRefs.current[normalizedAspect]
+      section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
 
   const runProjectFlow = useCallback(async () => {
     if (isSubmitting) return
@@ -382,6 +643,7 @@ export default function Chat() {
     if (!file && promptText) {
       setIsSubmitting(true)
       setRunStatus('granulating')
+      setViewMode('chat')
       setResults({
         project_id: 'text-only',
         stats: {},
@@ -397,6 +659,10 @@ export default function Chat() {
       setGranulateText(promptText)
       setGranulateResult(null)
       setGranulateError('')
+      setOpenAspects({})
+      setExpandedEvidence({})
+      setExpandedSummaryEvidence({})
+      setShowOtherAspects(false)
 
       try {
         const taxonomy = useTaxonomy ? parseTaxonomyInput(taxonomyText) : undefined
@@ -431,6 +697,7 @@ export default function Chat() {
 
     setIsSubmitting(true)
     setRunStatus('creating_project')
+    setViewMode('chat')
     setResults(null)
     setProjectId(null)
     setActiveTab('Overview')
@@ -441,6 +708,10 @@ export default function Chat() {
     setGranulateResult(null)
     setGranulateError('')
     setGranulateText(query.trim())
+    setOpenAspects({})
+    setExpandedEvidence({})
+    setExpandedSummaryEvidence({})
+    setShowOtherAspects(false)
 
     try {
       const formData = new FormData()
@@ -535,6 +806,11 @@ export default function Chat() {
 
     setIsGranulating(true)
     setGranulateError('')
+    setViewMode('analysis')
+    setOpenAspects({})
+    setExpandedEvidence({})
+    setExpandedSummaryEvidence({})
+    setShowOtherAspects(false)
 
     const taxonomy = useTaxonomy ? parseTaxonomyInput(taxonomyText) : undefined
 
@@ -615,7 +891,30 @@ export default function Chat() {
         </header>
 
         <main className="chat-content">
-          {!results && (
+          {results && (
+            <div className="chat-view-segmented" role="tablist" aria-label="View mode">
+              <button
+                type="button"
+                role="tab"
+                className={`chat-view-segment ${viewMode === 'chat' ? 'chat-view-segment--active' : ''}`}
+                onClick={() => setViewMode('chat')}
+                aria-selected={viewMode === 'chat'}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={`chat-view-segment ${viewMode === 'analysis' ? 'chat-view-segment--active' : ''}`}
+                onClick={() => setViewMode('analysis')}
+                aria-selected={viewMode === 'analysis'}
+              >
+                Analysis
+              </button>
+            </div>
+          )}
+
+          {(!results || viewMode === 'chat') && (
             <>
               <div className="chat-greeting-wrap">
                 <div
@@ -674,13 +973,17 @@ export default function Chat() {
                   <span className="chat-input-icon" aria-hidden>
                     <ChatIconSpark />
                   </span>
-                  <input
-                    type="text"
-                    className="chat-input"
+                  <textarea
+                    ref={queryInputRef}
+                    className="chat-input chat-input-textarea"
                     placeholder="Load your Data and analyze it like a pro in seconds"
                     value={query}
-                    onChange={(e) => setQuery(e.target.value)}
+                    onChange={(e) => {
+                      setQuery(e.target.value)
+                      autoResize(e.currentTarget)
+                    }}
                     aria-label="Ask AI"
+                    rows={1}
                   />
                 </div>
                 <div className="chat-input-toolbar">
@@ -708,6 +1011,11 @@ export default function Chat() {
                 {isSubmitting && (
                   <p className="chat-run-status" role="status">
                     Running analysis{runStatus ? ` (${runStatus})` : '...'}
+                  </p>
+                )}
+                {!isSubmitting && results && (
+                  <p className="chat-run-status" role="status">
+                    Analysis ready. Switch to <strong>Analysis</strong> to explore results.
                   </p>
                 )}
                 {attachedFiles.length > 0 && (
@@ -742,7 +1050,7 @@ export default function Chat() {
             </>
           )}
 
-          {results && (
+          {results && viewMode === 'analysis' && (
             <section className="chat-results-wrap">
               <div className="chat-tabs" role="tablist" aria-label="Results Explorer Tabs">
                 {RESULT_TABS.map((tab) => (
@@ -945,26 +1253,34 @@ export default function Chat() {
                   </div>
 
                   {useTaxonomy && (
-                    <input
-                      type="text"
-                      className="chat-input chat-inline-input"
-                      value={taxonomyText}
-                      onChange={(e) => setTaxonomyText(e.target.value)}
-                      placeholder='Taxonomy JSON (e.g. {"OTHER":["general"]})'
-                      aria-label="Taxonomy"
-                    />
+                    <div className="chat-taxonomy-wrap">
+                      <input
+                        type="text"
+                        className="chat-input chat-inline-input chat-taxonomy-input"
+                        value={taxonomyText}
+                        onChange={(e) => setTaxonomyText(e.target.value)}
+                        placeholder="Optional: customize categories (advanced)"
+                        aria-label="Taxonomy"
+                      />
+                      <p className="chat-taxonomy-help">
+                        {'Paste a JSON object mapping category -> keywords. Leave empty to auto-detect.'}
+                      </p>
+                    </div>
                   )}
 
-                  <div className="chat-granulate-actions">
+                  <div className="chat-run-actions">
                     <button
                       type="button"
-                      className="chat-send-btn chat-send-btn--compact"
+                      className="chat-run-btn"
                       onClick={runGranulate}
                       disabled={isGranulating}
-                      aria-label="Run granulate"
+                      aria-label="Run analysis"
                     >
-                      <ChatIconSend />
+                      {isGranulating ? 'Running analysis...' : 'Run analysis'}
                     </button>
+                    <span className="chat-run-hint" title="Re-runs the model with the current settings.">
+                      Re-runs the model with current settings.
+                    </span>
                   </div>
 
                   {granulateError && (
@@ -985,6 +1301,88 @@ export default function Chat() {
                         </p>
                       )}
 
+                      <div className="chat-analysis-layout">
+                        <section className="chat-result-panel chat-summary-panel">
+                          <h4 className="chat-result-subtitle">Aspect summary</h4>
+                          <div className="chat-aspect-summary-grid">
+                            {visibleAspectSummaries.length === 0 && (
+                              <p className="chat-muted-text">No aspect summaries available.</p>
+                            )}
+                            {visibleAspectSummaries.map((summary) => {
+                              const summaryExpanded = Boolean(expandedSummaryEvidence[summary.aspect])
+                              const visibleEvidence = summaryExpanded
+                                ? summary.topEvidence
+                                : summary.topEvidence.slice(0, 3)
+                              const hiddenCount = Math.max(summary.topEvidence.length - 3, 0)
+
+                              return (
+                                <article key={summary.aspect} className="chat-aspect-card">
+                                  <header className="chat-aspect-card-head">
+                                    <span className="chat-aspect-card-title">
+                                      {formatAspectLabel(summary.aspect)}
+                                    </span>
+                                    <strong className="chat-aspect-card-count">{summary.count}</strong>
+                                  </header>
+                                  <p className="chat-muted-text chat-aspect-card-stat">
+                                    Avg sentiment: {summary.avgSentimentLabel}
+                                  </p>
+                                  <div className="chat-chip-row">
+                                    {visibleEvidence.map((chip, chipIndex) => (
+                                      <span key={`${summary.aspect}-${chip}-${chipIndex}`} className="chat-chip">
+                                        {chip}
+                                      </span>
+                                    ))}
+                                    {summary.topEvidence.length > 3 && (
+                                      <button
+                                        type="button"
+                                        className="chat-chip chat-chip--muted chat-chip-button"
+                                        onClick={() =>
+                                          setExpandedSummaryEvidence((prev) => ({
+                                            ...prev,
+                                            [summary.aspect]: !prev[summary.aspect],
+                                          }))
+                                        }
+                                        aria-expanded={summaryExpanded}
+                                      >
+                                        {summaryExpanded ? 'Show less' : `+${hiddenCount}`}
+                                      </button>
+                                    )}
+                                  </div>
+                                </article>
+                              )
+                            })}
+                          </div>
+                        </section>
+
+                        <aside className="chat-result-panel chat-signals-panel">
+                          <h4 className="chat-result-subtitle">Key signals</h4>
+                          <div className="chat-signals-list">
+                            {highlightedGranules.length === 0 && (
+                              <p className="chat-muted-text">No highlights available.</p>
+                            )}
+                            {highlightedGranules.map((highlight, index) => (
+                              <button
+                                key={`${highlight.aspect}-${index}-${highlight.excerpt ?? ''}`}
+                                type="button"
+                                className="chat-signal-row"
+                                onClick={() => jumpToAspect(highlight.aspect?.trim() || 'Uncategorized')}
+                              >
+                                <span
+                                  className={`chat-sentiment-dot chat-sentiment-dot--${normalizeSentiment(
+                                    highlight.sentiment
+                                  )}`}
+                                  aria-hidden
+                                />
+                                <span className="chat-signal-excerpt">{highlight.excerpt ?? ''}</span>
+                                <span className="chat-signal-tag">
+                                  {formatAspectLabel(highlight.aspect?.trim() || 'Uncategorized')}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </aside>
+                      </div>
+
                       <h4 className="chat-result-subtitle">Units</h4>
                       <div className="chat-attached-list">
                         {granulateResult.units.length === 0 && (
@@ -997,28 +1395,131 @@ export default function Chat() {
                         ))}
                       </div>
 
+                      <div className="chat-accordion-tools">
+                        <label className="chat-control-block">
+                          <span>Sort</span>
+                          <select
+                            className="chat-select"
+                            value={granuleSortMode}
+                            onChange={(e) => setGranuleSortMode(e.target.value as SortMode)}
+                          >
+                            <option value="confidence">Confidence</option>
+                            <option value="similarity">Similarity</option>
+                            <option value="sentiment">Sentiment score</option>
+                          </select>
+                        </label>
+                        <label className="chat-control-block">
+                          <span>Filter sentiment</span>
+                          <select
+                            className="chat-select"
+                            value={granuleSentimentFilter}
+                            onChange={(e) => setGranuleSentimentFilter(e.target.value as SentimentFilter)}
+                          >
+                            <option value="all">All</option>
+                            <option value="positive">Positive</option>
+                            <option value="neutral">Neutral</option>
+                            <option value="negative">Negative</option>
+                          </select>
+                        </label>
+                        <label className="chat-control-inline chat-control-inline--toggle">
+                          <input
+                            type="checkbox"
+                            checked={showOtherAspects}
+                            onChange={(e) => setShowOtherAspects(e.target.checked)}
+                          />
+                          <span>Show OTHER</span>
+                        </label>
+                      </div>
+
                       <h4 className="chat-result-subtitle">Granules by aspect</h4>
-                      <div className="chat-granule-groups">
-                        {granulesByAspect.length === 0 && (
-                          <p className="chat-muted-text">No granules available.</p>
+                      <div className="chat-aspect-accordion-list">
+                        {aspectAccordions.length === 0 && (
+                          <p className="chat-muted-text">No granules available for this filter.</p>
                         )}
-                        {granulesByAspect.map(([aspect, granules]) => (
-                          <details key={aspect} className="chat-granule-group" open>
-                            <summary>
-                              {aspect} ({granules.length})
-                            </summary>
-                            <ul className="chat-granule-list">
-                              {granules.map((granule, index) => (
-                                <li key={`${aspect}-${index}`}>
-                                  <span>{granule.sentiment ?? 'neutral'}</span>
-                                  <span>{granule.excerpt ?? ''}</span>
-                                  {granule.evidence && granule.evidence.length > 0 && (
-                                    <span>{granule.evidence.join(', ')}</span>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
+                        {aspectAccordions.map((section) => (
+                          <section
+                            key={section.aspect}
+                            className="chat-aspect-accordion"
+                            ref={(el) => {
+                              aspectRefs.current[section.aspect] = el
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="chat-aspect-accordion-head"
+                              onClick={() => toggleAspect(section.aspect)}
+                              aria-expanded={Boolean(openAspects[section.aspect])}
+                            >
+                              <span className="chat-aspect-accordion-title">
+                                {formatAspectLabel(section.aspect)}
+                              </span>
+                              <span className="chat-aspect-accordion-count">{section.displayCount}</span>
+                              <span className="chat-aspect-accordion-sentiment">
+                                {section.displayAvgSentimentLabel}
+                              </span>
+                            </button>
+                            {openAspects[section.aspect] && (
+                              <div className="chat-aspect-accordion-body">
+                                {section.granules.map((granule, index) => {
+                                  const evidence = granule.evidence ?? []
+                                  const evidenceKey = `${section.aspect}-${index}`
+                                  const expanded = Boolean(expandedEvidence[evidenceKey])
+                                  const visibleEvidence = expanded ? evidence : evidence.slice(0, 6)
+                                  return (
+                                    <article
+                                      key={evidenceKey}
+                                      className={`chat-granule-card chat-granule-card--${normalizeSentiment(
+                                        granule.sentiment
+                                      )}`}
+                                    >
+                                      <p className="chat-granule-excerpt">{granule.excerpt ?? ''}</p>
+                                      <div className="chat-granule-meta">
+                                        <span className="chat-granule-meta-item">
+                                          <span
+                                            className={`chat-sentiment-dot chat-sentiment-dot--${normalizeSentiment(
+                                              granule.sentiment
+                                            )}`}
+                                            aria-hidden
+                                          />
+                                          {sentimentLabel(granule.sentiment)}
+                                        </span>
+                                        <span className="chat-granule-meta-item">
+                                          Confidence {granuleConfidence(granule).toFixed(2)}
+                                        </span>
+                                        <span className="chat-granule-meta-item">
+                                          Similarity{' '}
+                                          {typeof granule.similarity === 'number'
+                                            ? granule.similarity.toFixed(2)
+                                            : 'N/A'}
+                                        </span>
+                                      </div>
+                                      <div className="chat-chip-row">
+                                        {visibleEvidence.map((item) => (
+                                          <span key={`${evidenceKey}-${item}`} className="chat-chip">
+                                            {item}
+                                          </span>
+                                        ))}
+                                        {evidence.length > 6 && (
+                                          <button
+                                            type="button"
+                                            className="chat-chip chat-chip-button"
+                                            onClick={() =>
+                                              setExpandedEvidence((prev) => ({
+                                                ...prev,
+                                                [evidenceKey]: !prev[evidenceKey],
+                                              }))
+                                            }
+                                          >
+                                            {expanded ? 'Show less' : `+${evidence.length - 6} more`}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </article>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </section>
                         ))}
                       </div>
                     </div>
