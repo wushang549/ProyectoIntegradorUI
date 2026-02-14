@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import imageLogin from '../../assets/Image_login.png'
 import './AuthLayout.css'
 
 interface AuthLayoutProps {
@@ -18,13 +17,6 @@ export default function AuthLayout({ children, footerText, footerLink }: AuthLay
         </svg>
         Back
       </Link>
-      <aside className="auth-image-panel">
-        <img
-          src={imageLogin}
-          alt="Granulate"
-          className="auth-dashboard-img"
-        />
-      </aside>
       <aside className="auth-form-panel">
         <div className="auth-form-inner">
           {children}
