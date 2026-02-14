@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import granulateLogo from '../../assets/Granulate logo.png'
+import GranulatePanel from './granulate/GranulatePanel'
 import './chat.css'
 
 const API_BASE_URL = 'http://127.0.0.1:8000/v1'
@@ -55,7 +56,7 @@ type ClassifyResponse = {
   confidence_margin?: number
 }
 
-type GranulateGranule = {
+export type GranulateGranule = {
   aspect: string
   excerpt?: string
   evidence?: string[]
@@ -67,7 +68,7 @@ type GranulateGranule = {
   scenarios?: string[]
 }
 
-type GranulateResponse = {
+export type GranulateResponse = {
   text: string
   units: string[]
   granules: GranulateGranule[]
@@ -85,17 +86,22 @@ type GranulateResponse = {
 }
 
 type ViewMode = 'chat' | 'analysis'
-type SortMode = 'confidence' | 'similarity' | 'sentiment'
-type SentimentFilter = 'all' | 'positive' | 'neutral' | 'negative'
-type SentimentValue = 'positive' | 'neutral' | 'negative'
+export type SortMode = 'confidence' | 'similarity' | 'sentiment'
+export type SentimentFilter = 'all' | 'positive' | 'neutral' | 'negative'
+export type SentimentValue = 'positive' | 'neutral' | 'negative'
 
-type AspectSummary = {
+export type AspectSummary = {
   aspect: string
   count: number
   avgSentimentScore: number
   avgSentimentLabel: string
   topEvidence: string[]
   granules: GranulateGranule[]
+}
+
+export type AspectAccordionSection = AspectSummary & {
+  displayCount: number
+  displayAvgSentimentLabel: string
 }
 
 /* Dots arranged in concentric rings to form a circle */
@@ -562,7 +568,7 @@ export default function Chat() {
     return [...source].sort((a, b) => granuleConfidence(b) - granuleConfidence(a)).slice(0, 3)
   }, [granulateResult])
 
-  const aspectAccordions = useMemo(() => {
+  const aspectAccordions = useMemo<AspectAccordionSection[]>(() => {
     return visibleAspectSummaries
       .map((summary) => {
         const filtered = summary.granules.filter((granule) => {
@@ -1205,326 +1211,43 @@ export default function Chat() {
               )}
 
               {activeTab === 'Granulate' && (
-                <div className="chat-result-panel">
-                  <h3 className="chat-result-title">Granulate</h3>
-                  <textarea
-                    className="chat-granulate-textarea"
-                    value={granulateText}
-                    onChange={(e) => setGranulateText(e.target.value)}
-                    placeholder="Enter text to granulate"
-                    aria-label="Granulate input text"
-                    rows={4}
-                  />
-
-                  <div className="chat-controls-grid">
-                    <label className="chat-control-block">
-                      <span>min_similarity: {minSimilarity.toFixed(2)}</span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={minSimilarity}
-                        onChange={(e) => setMinSimilarity(Number(e.target.value))}
-                      />
-                    </label>
-
-                    <label className="chat-control-block">
-                      <span>top_k_evidence</span>
-                      <select
-                        value={topKEvidence}
-                        onChange={(e) => setTopKEvidence(Number(e.target.value))}
-                        className="chat-select"
-                      >
-                        <option value={3}>3</option>
-                        <option value={6}>6</option>
-                        <option value={10}>10</option>
-                      </select>
-                    </label>
-
-                    <label className="chat-control-inline">
-                      <input
-                        type="checkbox"
-                        checked={useTaxonomy}
-                        onChange={(e) => setUseTaxonomy(e.target.checked)}
-                      />
-                      <span>Include taxonomy</span>
-                    </label>
-                  </div>
-
-                  {useTaxonomy && (
-                    <div className="chat-taxonomy-wrap">
-                      <input
-                        type="text"
-                        className="chat-input chat-inline-input chat-taxonomy-input"
-                        value={taxonomyText}
-                        onChange={(e) => setTaxonomyText(e.target.value)}
-                        placeholder="Optional: customize categories (advanced)"
-                        aria-label="Taxonomy"
-                      />
-                      <p className="chat-taxonomy-help">
-                        {'Paste a JSON object mapping category -> keywords. Leave empty to auto-detect.'}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="chat-run-actions">
-                    <button
-                      type="button"
-                      className="chat-run-btn"
-                      onClick={runGranulate}
-                      disabled={isGranulating}
-                      aria-label="Run analysis"
-                    >
-                      {isGranulating ? 'Running analysis...' : 'Run analysis'}
-                    </button>
-                    <span className="chat-run-hint" title="Re-runs the model with the current settings.">
-                      Re-runs the model with current settings.
-                    </span>
-                  </div>
-
-                  {granulateError && (
-                    <p className="chat-file-error" role="alert">
-                      {granulateError}
-                    </p>
-                  )}
-
-                  {granulateResult && (
-                    <div className="chat-granulate-results">
-                      {granulateResult.scenario_summary && (
-                        <p className="chat-muted-text">
-                          {typeof granulateResult.scenario_summary === 'string'
-                            ? granulateResult.scenario_summary
-                            : Object.entries(granulateResult.scenario_summary)
-                                .map(([name, value]) => `${name}: ${value}`)
-                                .join(' | ')}
-                        </p>
-                      )}
-
-                      <div className="chat-analysis-layout">
-                        <section className="chat-result-panel chat-summary-panel">
-                          <h4 className="chat-result-subtitle">Aspect summary</h4>
-                          <div className="chat-aspect-summary-grid">
-                            {visibleAspectSummaries.length === 0 && (
-                              <p className="chat-muted-text">No aspect summaries available.</p>
-                            )}
-                            {visibleAspectSummaries.map((summary) => {
-                              const summaryExpanded = Boolean(expandedSummaryEvidence[summary.aspect])
-                              const visibleEvidence = summaryExpanded
-                                ? summary.topEvidence
-                                : summary.topEvidence.slice(0, 3)
-                              const hiddenCount = Math.max(summary.topEvidence.length - 3, 0)
-
-                              return (
-                                <article key={summary.aspect} className="chat-aspect-card">
-                                  <header className="chat-aspect-card-head">
-                                    <span className="chat-aspect-card-title">
-                                      {formatAspectLabel(summary.aspect)}
-                                    </span>
-                                    <strong className="chat-aspect-card-count">{summary.count}</strong>
-                                  </header>
-                                  <p className="chat-muted-text chat-aspect-card-stat">
-                                    Avg sentiment: {summary.avgSentimentLabel}
-                                  </p>
-                                  <div className="chat-chip-row">
-                                    {visibleEvidence.map((chip, chipIndex) => (
-                                      <span key={`${summary.aspect}-${chip}-${chipIndex}`} className="chat-chip">
-                                        {chip}
-                                      </span>
-                                    ))}
-                                    {summary.topEvidence.length > 3 && (
-                                      <button
-                                        type="button"
-                                        className="chat-chip chat-chip--muted chat-chip-button"
-                                        onClick={() =>
-                                          setExpandedSummaryEvidence((prev) => ({
-                                            ...prev,
-                                            [summary.aspect]: !prev[summary.aspect],
-                                          }))
-                                        }
-                                        aria-expanded={summaryExpanded}
-                                      >
-                                        {summaryExpanded ? 'Show less' : `+${hiddenCount}`}
-                                      </button>
-                                    )}
-                                  </div>
-                                </article>
-                              )
-                            })}
-                          </div>
-                        </section>
-
-                        <aside className="chat-result-panel chat-signals-panel">
-                          <h4 className="chat-result-subtitle">Key signals</h4>
-                          <div className="chat-signals-list">
-                            {highlightedGranules.length === 0 && (
-                              <p className="chat-muted-text">No highlights available.</p>
-                            )}
-                            {highlightedGranules.map((highlight, index) => (
-                              <button
-                                key={`${highlight.aspect}-${index}-${highlight.excerpt ?? ''}`}
-                                type="button"
-                                className="chat-signal-row"
-                                onClick={() => jumpToAspect(highlight.aspect?.trim() || 'Uncategorized')}
-                              >
-                                <span
-                                  className={`chat-sentiment-dot chat-sentiment-dot--${normalizeSentiment(
-                                    highlight.sentiment
-                                  )}`}
-                                  aria-hidden
-                                />
-                                <span className="chat-signal-excerpt">{highlight.excerpt ?? ''}</span>
-                                <span className="chat-signal-tag">
-                                  {formatAspectLabel(highlight.aspect?.trim() || 'Uncategorized')}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </aside>
-                      </div>
-
-                      <h4 className="chat-result-subtitle">Units</h4>
-                      <div className="chat-attached-list">
-                        {granulateResult.units.length === 0 && (
-                          <p className="chat-muted-text">No units available.</p>
-                        )}
-                        {granulateResult.units.map((unit, index) => (
-                          <span key={`${unit}-${index}`} className="chat-attached-tag">
-                            {unit}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="chat-accordion-tools">
-                        <label className="chat-control-block">
-                          <span>Sort</span>
-                          <select
-                            className="chat-select"
-                            value={granuleSortMode}
-                            onChange={(e) => setGranuleSortMode(e.target.value as SortMode)}
-                          >
-                            <option value="confidence">Confidence</option>
-                            <option value="similarity">Similarity</option>
-                            <option value="sentiment">Sentiment score</option>
-                          </select>
-                        </label>
-                        <label className="chat-control-block">
-                          <span>Filter sentiment</span>
-                          <select
-                            className="chat-select"
-                            value={granuleSentimentFilter}
-                            onChange={(e) => setGranuleSentimentFilter(e.target.value as SentimentFilter)}
-                          >
-                            <option value="all">All</option>
-                            <option value="positive">Positive</option>
-                            <option value="neutral">Neutral</option>
-                            <option value="negative">Negative</option>
-                          </select>
-                        </label>
-                        <label className="chat-control-inline chat-control-inline--toggle">
-                          <input
-                            type="checkbox"
-                            checked={showOtherAspects}
-                            onChange={(e) => setShowOtherAspects(e.target.checked)}
-                          />
-                          <span>Show OTHER</span>
-                        </label>
-                      </div>
-
-                      <h4 className="chat-result-subtitle">Granules by aspect</h4>
-                      <div className="chat-aspect-accordion-list">
-                        {aspectAccordions.length === 0 && (
-                          <p className="chat-muted-text">No granules available for this filter.</p>
-                        )}
-                        {aspectAccordions.map((section) => (
-                          <section
-                            key={section.aspect}
-                            className="chat-aspect-accordion"
-                            ref={(el) => {
-                              aspectRefs.current[section.aspect] = el
-                            }}
-                          >
-                            <button
-                              type="button"
-                              className="chat-aspect-accordion-head"
-                              onClick={() => toggleAspect(section.aspect)}
-                              aria-expanded={Boolean(openAspects[section.aspect])}
-                            >
-                              <span className="chat-aspect-accordion-title">
-                                {formatAspectLabel(section.aspect)}
-                              </span>
-                              <span className="chat-aspect-accordion-count">{section.displayCount}</span>
-                              <span className="chat-aspect-accordion-sentiment">
-                                {section.displayAvgSentimentLabel}
-                              </span>
-                            </button>
-                            {openAspects[section.aspect] && (
-                              <div className="chat-aspect-accordion-body">
-                                {section.granules.map((granule, index) => {
-                                  const evidence = granule.evidence ?? []
-                                  const evidenceKey = `${section.aspect}-${index}`
-                                  const expanded = Boolean(expandedEvidence[evidenceKey])
-                                  const visibleEvidence = expanded ? evidence : evidence.slice(0, 6)
-                                  return (
-                                    <article
-                                      key={evidenceKey}
-                                      className={`chat-granule-card chat-granule-card--${normalizeSentiment(
-                                        granule.sentiment
-                                      )}`}
-                                    >
-                                      <p className="chat-granule-excerpt">{granule.excerpt ?? ''}</p>
-                                      <div className="chat-granule-meta">
-                                        <span className="chat-granule-meta-item">
-                                          <span
-                                            className={`chat-sentiment-dot chat-sentiment-dot--${normalizeSentiment(
-                                              granule.sentiment
-                                            )}`}
-                                            aria-hidden
-                                          />
-                                          {sentimentLabel(granule.sentiment)}
-                                        </span>
-                                        <span className="chat-granule-meta-item">
-                                          Confidence {granuleConfidence(granule).toFixed(2)}
-                                        </span>
-                                        <span className="chat-granule-meta-item">
-                                          Similarity{' '}
-                                          {typeof granule.similarity === 'number'
-                                            ? granule.similarity.toFixed(2)
-                                            : 'N/A'}
-                                        </span>
-                                      </div>
-                                      <div className="chat-chip-row">
-                                        {visibleEvidence.map((item) => (
-                                          <span key={`${evidenceKey}-${item}`} className="chat-chip">
-                                            {item}
-                                          </span>
-                                        ))}
-                                        {evidence.length > 6 && (
-                                          <button
-                                            type="button"
-                                            className="chat-chip chat-chip-button"
-                                            onClick={() =>
-                                              setExpandedEvidence((prev) => ({
-                                                ...prev,
-                                                [evidenceKey]: !prev[evidenceKey],
-                                              }))
-                                            }
-                                          >
-                                            {expanded ? 'Show less' : `+${evidence.length - 6} more`}
-                                          </button>
-                                        )}
-                                      </div>
-                                    </article>
-                                  )
-                                })}
-                              </div>
-                            )}
-                          </section>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <GranulatePanel
+                  granulateText={granulateText}
+                  setGranulateText={setGranulateText}
+                  minSimilarity={minSimilarity}
+                  setMinSimilarity={setMinSimilarity}
+                  topKEvidence={topKEvidence}
+                  setTopKEvidence={setTopKEvidence}
+                  useTaxonomy={useTaxonomy}
+                  setUseTaxonomy={setUseTaxonomy}
+                  taxonomyText={taxonomyText}
+                  setTaxonomyText={setTaxonomyText}
+                  runGranulate={runGranulate}
+                  isGranulating={isGranulating}
+                  granulateError={granulateError}
+                  granulateResult={granulateResult}
+                  visibleAspectSummaries={visibleAspectSummaries}
+                  expandedSummaryEvidence={expandedSummaryEvidence}
+                  setExpandedSummaryEvidence={setExpandedSummaryEvidence}
+                  highlightedGranules={highlightedGranules}
+                  jumpToAspect={jumpToAspect}
+                  granuleSortMode={granuleSortMode}
+                  setGranuleSortMode={setGranuleSortMode}
+                  granuleSentimentFilter={granuleSentimentFilter}
+                  setGranuleSentimentFilter={setGranuleSentimentFilter}
+                  showOtherAspects={showOtherAspects}
+                  setShowOtherAspects={setShowOtherAspects}
+                  aspectAccordions={aspectAccordions}
+                  openAspects={openAspects}
+                  toggleAspect={toggleAspect}
+                  expandedEvidence={expandedEvidence}
+                  setExpandedEvidence={setExpandedEvidence}
+                  normalizeSentiment={normalizeSentiment}
+                  formatAspectLabel={formatAspectLabel}
+                  sentimentLabel={sentimentLabel}
+                  granuleConfidence={granuleConfidence}
+                  aspectRefs={aspectRefs}
+                />
               )}
 
               {activeTab === 'Hierarchy' && (
