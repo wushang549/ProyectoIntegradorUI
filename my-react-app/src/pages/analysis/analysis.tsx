@@ -8,7 +8,7 @@ import AnalysisHeader from './components/analysisHeader'
 import AnalysisInput from './components/analysisInput'
 import RunSettings from './components/runSettings'
 import AnalysisOutput from './components/analysisOutput'
-import { mockDataBalanced, mockDataDetailed } from './mockData'
+import { mockDataBalanced } from './mockData'
 import type { Granularity, LoadingStep } from './types'
 
 export default function Analysis() {

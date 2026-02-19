@@ -502,8 +502,88 @@
 
 .chat-run-status {
   margin-top: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.95));
+  padding: 10px 12px;
+  display: grid;
+  gap: 7px;
+}
+
+.chat-run-status-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chat-run-status-title {
   font-size: 13px;
-  color: #475569;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.chat-run-status-pct {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1d4ed8;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-run-progress {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+  overflow: hidden;
+}
+
+.chat-run-progress-fill {
+  position: relative;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6, #5170ff 45%, #60a5fa);
+  transition: width 0.2s ease;
+}
+
+.chat-run-progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.33) 45%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: chat-progress-sheen 1.6s ease-in-out infinite;
+}
+
+.chat-run-progress-fill--indeterminate {
+  width: 28% !important;
+  animation: chat-progress-indeterminate 1.1s ease-in-out infinite alternate;
+}
+
+.chat-run-status-detail {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+@keyframes chat-progress-sheen {
+  to {
+    transform: translateX(220%);
+  }
+}
+
+@keyframes chat-progress-indeterminate {
+  from {
+    transform: translateX(-6%);
+  }
+  to {
+    transform: translateX(18%);
+  }
 }
 
 .chat-results-wrap {
@@ -609,7 +689,7 @@
 
 .chat-map-row {
   display: grid;
-  grid-template-columns: 70px 70px 90px 1fr;
+  grid-template-columns: 90px 70px 70px 90px 1fr;
   gap: 8px;
   align-items: center;
   padding: 8px 10px;
@@ -721,5 +801,278 @@
   .chat-content {
     max-width: 100%;
     padding: 22px 16px 34px;
+  }
+}
+
+.chat-plain-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chat-plain-btn:hover {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.chat-plain-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chat-state-card {
+  width: 100%;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.chat-ellipsis-text {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-clusters-grid {
+  gap: 10px;
+}
+
+.chat-cluster-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.chat-cluster-card--active {
+  border-color: rgba(81, 112, 255, 0.45);
+  background: rgba(81, 112, 255, 0.08);
+}
+
+.chat-list-item--small {
+  font-size: 12px;
+}
+
+.chat-granulate-actions {
+  margin-top: 10px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-granulate-items {
+  margin-top: 8px;
+}
+
+.chat-granulate-item-card {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fafc;
+  display: grid;
+  gap: 8px;
+}
+
+.chat-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.chat-chip-button {
+  cursor: pointer;
+}
+
+.chat-chip--active {
+  border-color: rgba(81, 112, 255, 0.55);
+  background: rgba(81, 112, 255, 0.14);
+  color: #1e293b;
+}
+
+.chat-hierarchy-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+  gap: 12px;
+  align-items: start;
+}
+
+.chat-hierarchy-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-hierarchy-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chat-dendrogram-wrap {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f5f8fc 100%);
+  overflow: auto;
+  max-height: 72vh;
+}
+
+.chat-dendrogram-svg {
+  width: 100%;
+  min-width: 860px;
+  display: block;
+}
+
+.chat-dendrogram-grid-row {
+  pointer-events: none;
+}
+
+.chat-dendrogram-grid-line {
+  stroke: rgba(100, 116, 139, 0.16);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.chat-dendrogram-grid-label {
+  fill: rgba(71, 85, 105, 0.75);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.chat-dendrogram-link {
+  fill: none;
+  stroke: var(--dendrogram-link-color, rgba(15, 23, 42, 0.3));
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.82;
+  transition: opacity 0.18s ease, stroke-width 0.18s ease;
+}
+
+.chat-dendrogram-link--active {
+  stroke-width: 2.1;
+  opacity: 1;
+}
+
+.chat-dendrogram-link--faded {
+  opacity: 0.18;
+}
+
+.chat-dendrogram-node {
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 0.18s ease;
+}
+
+.chat-dendrogram-hitarea {
+  fill: rgba(15, 23, 42, 0);
+  stroke: none;
+  pointer-events: all;
+}
+
+.chat-dendrogram-node circle,
+.chat-dendrogram-node rect {
+  stroke: var(--dendrogram-node-stroke, #64748b);
+  stroke-width: 1.2;
+  fill: var(--dendrogram-node-fill, rgba(148, 163, 184, 0.16));
+  transition: fill 0.18s ease, stroke 0.18s ease, transform 0.18s ease;
+}
+
+.chat-dendrogram-node--leaf circle {
+  fill: color-mix(in srgb, var(--dendrogram-node-fill, #e2e8f0) 70%, #ffffff 30%);
+}
+
+.chat-dendrogram-node--internal rect {
+  stroke-width: 1.45;
+  fill: color-mix(in srgb, var(--dendrogram-node-fill, #e2e8f0) 85%, #ffffff 15%);
+}
+
+.chat-dendrogram-node--cluster circle,
+.chat-dendrogram-node--cluster rect {
+  stroke-width: 1.55;
+}
+
+.chat-dendrogram-node--descendant circle,
+.chat-dendrogram-node--descendant rect {
+  stroke-width: 1.45;
+}
+
+.chat-dendrogram-node--selected circle,
+.chat-dendrogram-node--selected rect {
+  fill: #1d4ed8;
+  stroke: #1e3a8a;
+}
+
+.chat-dendrogram-node--point circle,
+.chat-dendrogram-node--point rect {
+  fill: #f97316;
+  stroke: #c2410c;
+}
+
+.chat-dendrogram-node--faded {
+  opacity: 0.22;
+}
+
+.chat-dendrogram-node--selected,
+.chat-dendrogram-node--point {
+  opacity: 1;
+}
+
+.chat-dendrogram-node-label {
+  fill: #0f172a;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  user-select: none;
+  paint-order: stroke;
+  stroke: rgba(248, 250, 252, 0.92);
+  stroke-width: 3px;
+}
+
+.chat-hierarchy-legend {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-hierarchy-inspection {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px;
+  display: grid;
+  gap: 2px;
+}
+
+@media (max-width: 1080px) {
+  .chat-hierarchy-layout {
+    grid-template-columns: 1fr;
   }
 }

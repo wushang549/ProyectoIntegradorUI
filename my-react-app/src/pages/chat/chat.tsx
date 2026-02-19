@@ -1,60 +1,45 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import granulateLogo from '../../assets/Granulate logo.png'
-import GranulatePanel from './granulate/GranulatePanel'
+import {
+  ApiError,
+  getAnalysisClusters,
+  getAnalysisGranulate,
+  getAnalysisHierarchy,
+  getAnalysisMap,
+  getAnalysisOverview,
+  wait,
+} from '../../api/analysis.client'
+import type {
+  AnalysisGranulateResponse,
+  ClustersResponse,
+  HierarchyResponse,
+  MapResponse,
+  OverviewResponse,
+} from '../../api/analysis.types'
+import { useAnalysisRun } from '../../hooks/useAnalysisRun'
+import {
+  clearAnalysisSelection,
+  createInitialAnalysisSelectionState,
+  withSelectedCluster,
+  withSelectedPoint,
+} from '../../state/analysisStore'
+import ClustersTab from '../../tabs/ClustersTab'
+import GranulateTab from '../../tabs/GranulateTab'
+import HierarchyTab from '../../tabs/HierarchyTab'
+import MapTab from '../../tabs/MapTab'
+import OverviewTab from '../../tabs/OverviewTab'
 import './chat.css'
 
-const API_BASE_URL = 'http://127.0.0.1:8000/v1'
-const ALLOWED_TYPES = ['.csv', '.txt', '.pdf']
+const ALLOWED_TYPES = ['.csv']
 const POLL_INTERVAL_MS = 1500
 const POLL_TIMEOUT_MS = 120000
-const DEFAULT_TOP_K_EVIDENCE = 6
+const ARTIFACT_TIMEOUT_MS = 120000
 
 const RESULT_TABS = ['Overview', 'Map', 'Clusters', 'Granulate', 'Hierarchy'] as const
 
 type ResultTab = (typeof RESULT_TABS)[number]
-type ClusterId = string | number
-
-type ProjectCreated = {
-  project_id: string
-  status: string
-}
-
-type ProjectStatus = {
-  project_id: string
-  name?: string
-  status: string
-}
-
-type ResultPoint = {
-  x: number
-  y: number
-  cluster_id: ClusterId
-  text_preview?: string
-}
-
-type ResultCluster = {
-  cluster_id: ClusterId
-  cluster_label?: string
-  size?: number
-  count?: number
-}
-
-type ProjectResults = {
-  project_id: string
-  stats: Record<string, unknown>
-  points: ResultPoint[]
-  clusters: ResultCluster[]
-}
-
-type ClassifyResponse = {
-  cluster_id: ClusterId
-  cluster_label?: string
-  text_preview?: string
-  x?: number
-  y?: number
-  confidence_margin?: number
-}
+type ViewMode = 'chat' | 'analysis'
 
 export type GranulateGranule = {
   aspect: string
@@ -85,7 +70,6 @@ export type GranulateResponse = {
   highlights?: GranulateGranule[]
 }
 
-type ViewMode = 'chat' | 'analysis'
 export type SortMode = 'confidence' | 'similarity' | 'sentiment'
 export type SentimentFilter = 'all' | 'positive' | 'neutral' | 'negative'
 export type SentimentValue = 'positive' | 'neutral' | 'negative'
@@ -102,6 +86,57 @@ export type AspectSummary = {
 export type AspectAccordionSection = AspectSummary & {
   displayCount: number
   displayAvgSentimentLabel: string
+}
+
+type AnalysisArtifacts = {
+  overview: OverviewResponse | null
+  map: MapResponse | null
+  clusters: ClustersResponse | null
+  granulate: AnalysisGranulateResponse | null
+  hierarchy: HierarchyResponse | null
+}
+
+const RUN_STAGES = [
+  'queued',
+  'embeddings',
+  'hierarchy',
+  'clusters',
+  'umap',
+  'labeling',
+  'granulate',
+  'overview',
+  'completed',
+  'failed',
+] as const
+
+type RunStage = (typeof RUN_STAGES)[number]
+
+const RUN_STAGE_META: Record<RunStage, { label: string; detail: string; min: number; max: number }> = {
+  queued: { label: 'Queued', detail: 'Waiting for workers to start', min: 2, max: 10 },
+  embeddings: { label: 'Embeddings', detail: 'Generating vector representations', min: 10, max: 28 },
+  hierarchy: { label: 'Hierarchy', detail: 'Building dendrogram structure', min: 28, max: 44 },
+  clusters: { label: 'Clusters', detail: 'Grouping related items', min: 44, max: 60 },
+  umap: { label: 'Map', detail: 'Projecting points for map view', min: 60, max: 76 },
+  labeling: { label: 'Labeling', detail: 'Writing cluster labels', min: 76, max: 88 },
+  granulate: { label: 'Granulate', detail: 'Producing granules and highlights', min: 88, max: 95 },
+  overview: { label: 'Overview', detail: 'Finalizing summary artifacts', min: 95, max: 99 },
+  completed: { label: 'Completed', detail: 'Analysis completed', min: 100, max: 100 },
+  failed: { label: 'Failed', detail: 'Analysis finished with errors', min: 0, max: 100 },
+}
+
+function clampProgress(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+function createEmptyArtifacts(): AnalysisArtifacts {
+  return {
+    overview: null,
+    map: null,
+    clusters: null,
+    granulate: null,
+    hierarchy: null,
+  }
 }
 
 /* Dots arranged in concentric rings to form a circle */
@@ -156,184 +191,22 @@ function getRepulsion(
   }
 }
 
-function normalizeStatus(status: string | undefined) {
-  return (status ?? '').toLowerCase().trim()
-}
+async function with409Retry<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
+  const start = Date.now()
 
-function isFailedStatus(status: string | undefined) {
-  return normalizeStatus(status) === 'failed'
-}
-
-function isCompletedStatus(status: string | undefined) {
-  const value = normalizeStatus(status)
-  return ['completed', 'complete', 'succeeded', 'success', 'done', 'finished'].includes(value)
-}
-
-async function parseErrorMessage(res: Response) {
-  try {
-    const data = (await res.json()) as Record<string, unknown>
-    const backendMessage =
-      data.error_message ?? data.detail ?? data.message ?? data.error ?? data.status
-
-    if (typeof backendMessage === 'string' && backendMessage.trim()) {
-      return backendMessage
-    }
-  } catch {
-    // ignore invalid json
-  }
-
-  return `${res.status} ${res.statusText}`
-}
-
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, init)
-  if (!res.ok) {
-    throw new Error(await parseErrorMessage(res))
-  }
-  return (await res.json()) as T
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function getClusterSize(cluster: ResultCluster) {
-  if (typeof cluster.size === 'number') return cluster.size
-  if (typeof cluster.count === 'number') return cluster.count
-  return 0
-}
-
-function getClusterLabel(cluster: ResultCluster) {
-  if (cluster.cluster_label && cluster.cluster_label.trim()) return cluster.cluster_label
-  return `Cluster ${cluster.cluster_id}`
-}
-
-function formatStatKey(key: string) {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
-const ASPECT_LABEL_OVERRIDES: Record<string, string> = {
-  PRICE_VALUE: 'Price & value',
-  WAIT_TIME: 'Wait time',
-  FOOD_QUALITY: 'Food quality',
-  RETURN_INTENT: 'Return intent',
-}
-
-function formatAspectLabel(aspect: string): string {
-  const normalized = aspect.trim()
-  if (!normalized) return 'Uncategorized'
-
-  const mapped = ASPECT_LABEL_OVERRIDES[normalized.toUpperCase()]
-  if (mapped) return mapped
-
-  return normalized
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
-function formatNumber(value: number | undefined) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
-  return value.toFixed(3)
-}
-
-function buildAnalysisName(raw: string, file: File) {
-  const prompt = raw.trim()
-  if (prompt) return prompt.slice(0, 80)
-
-  const base = file.name.replace(/\.[^/.]+$/, '').trim()
-  if (base) return `${base} analysis`
-
-  return `Analysis ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`
-}
-
-function parseTaxonomyInput(raw: string): Record<string, string[]> | undefined {
-  const value = raw.trim()
-  if (!value) return undefined
-
-  try {
-    const parsed = JSON.parse(value) as unknown
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const entries = Object.entries(parsed as Record<string, unknown>)
-      const normalized: Record<string, string[]> = {}
-      for (const [key, item] of entries) {
-        if (Array.isArray(item)) {
-          const values = item
-            .filter((entry): entry is string => typeof entry === 'string')
-            .map((entry) => entry.trim())
-            .filter(Boolean)
-          if (values.length > 0) normalized[key] = values
-        }
+  while (Date.now() - start < timeoutMs) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        await wait(POLL_INTERVAL_MS)
+        continue
       }
-      if (Object.keys(normalized).length > 0) return normalized
-    }
-  } catch {
-    // fallback below
-  }
-
-  const terms = value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-
-  if (terms.length === 0) return undefined
-  return { OTHER: terms }
-}
-
-function normalizeSentiment(value: string | undefined): SentimentValue {
-  const normalized = (value ?? '').toLowerCase().trim()
-  if (normalized === 'positive') return 'positive'
-  if (normalized === 'negative') return 'negative'
-  return 'neutral'
-}
-
-function sentimentLabel(value: string | undefined) {
-  const normalized = normalizeSentiment(value)
-  if (normalized === 'positive') return 'Positive'
-  if (normalized === 'negative') return 'Negative'
-  return 'Neutral'
-}
-
-function sentimentScore(granule: GranulateGranule) {
-  if (typeof granule.sentiment_score === 'number') return granule.sentiment_score
-  const normalized = normalizeSentiment(granule.sentiment)
-  if (normalized === 'positive') return 1
-  if (normalized === 'negative') return -1
-  return 0
-}
-
-function averageSentiment(granules: GranulateGranule[]) {
-  if (granules.length === 0) return 0
-  const total = granules.reduce((sum, granule) => sum + sentimentScore(granule), 0)
-  return total / granules.length
-}
-
-function avgSentimentLabel(score: number) {
-  if (score > 0.15) return 'Positive'
-  if (score < -0.15) return 'Negative'
-  return 'Neutral'
-}
-
-function granuleConfidence(granule: GranulateGranule) {
-  if (typeof granule.confidence === 'number') return granule.confidence
-  if (typeof granule.similarity === 'number') return granule.similarity
-  return 0
-}
-
-function topEvidence(granules: GranulateGranule[]) {
-  const evidenceCount = new Map<string, number>()
-  for (const granule of granules) {
-    for (const evidenceItem of granule.evidence ?? []) {
-      const trimmed = evidenceItem.trim()
-      if (!trimmed) continue
-      evidenceCount.set(trimmed, (evidenceCount.get(trimmed) ?? 0) + 1)
+      throw err
     }
   }
-  return Array.from(evidenceCount.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([term]) => term)
+
+  throw new Error(`Artifacts are still processing after ${Math.round(timeoutMs / 1000)} seconds.`)
 }
 
 export default function Chat() {
@@ -343,39 +216,24 @@ export default function Chat() {
   const [isDragging, setIsDragging] = useState(false)
   const [fileError, setFileError] = useState('')
   const [requestError, setRequestError] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [runStatus, setRunStatus] = useState('')
+  const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(false)
+  const [isLoadingGranulateItems, setIsLoadingGranulateItems] = useState(false)
+  const [displayProgress, setDisplayProgress] = useState(0)
+  const [stageStartedAt, setStageStartedAt] = useState(() => Date.now())
+  const [progressTicker, setProgressTicker] = useState(0)
 
-  const [projectId, setProjectId] = useState<string | null>(null)
-  const [results, setResults] = useState<ProjectResults | null>(null)
+  const [artifacts, setArtifacts] = useState<AnalysisArtifacts>(createEmptyArtifacts)
   const [activeTab, setActiveTab] = useState<ResultTab>('Overview')
-  const [selectedClusterId, setSelectedClusterId] = useState<ClusterId | null>(null)
-  const [selectedTextPreview, setSelectedTextPreview] = useState('')
+  const [selection, setSelection] = useState(createInitialAnalysisSelectionState)
 
-  const [classifyText, setClassifyText] = useState('')
-  const [classifyResult, setClassifyResult] = useState<ClassifyResponse | null>(null)
-  const [classifyError, setClassifyError] = useState('')
-  const [isClassifying, setIsClassifying] = useState(false)
-
-  const [granulateText, setGranulateText] = useState('')
-  const [minSimilarity, setMinSimilarity] = useState(0.06)
-  const [topKEvidence, setTopKEvidence] = useState(DEFAULT_TOP_K_EVIDENCE)
-  const [useTaxonomy, setUseTaxonomy] = useState(false)
-  const [taxonomyText, setTaxonomyText] = useState('')
-  const [granulateResult, setGranulateResult] = useState<GranulateResponse | null>(null)
-  const [granulateError, setGranulateError] = useState('')
-  const [isGranulating, setIsGranulating] = useState(false)
-  const [granuleSortMode, setGranuleSortMode] = useState<SortMode>('confidence')
-  const [granuleSentimentFilter, setGranuleSentimentFilter] = useState<SentimentFilter>('all')
-  const [showOtherAspects, setShowOtherAspects] = useState(false)
-  const [openAspects, setOpenAspects] = useState<Record<string, boolean>>({})
-  const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({})
-  const [expandedSummaryEvidence, setExpandedSummaryEvidence] = useState<Record<string, boolean>>({})
+  const { analysisId, status, isRunning, error: runError, startAnalysis, resetRun } = useAnalysisRun({
+    intervalMs: POLL_INTERVAL_MS,
+    timeoutMs: POLL_TIMEOUT_MS,
+  })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryInputRef = useRef<HTMLTextAreaElement>(null)
   const orbRef = useRef<HTMLDivElement>(null)
-  const aspectRefs = useRef<Record<string, HTMLElement | null>>({})
   const [mouseInOrb, setMouseInOrb] = useState<{ x: number; y: number } | null>(null)
 
   const handleOrbMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -392,7 +250,7 @@ export default function Chat() {
   }, [])
 
   const validateFile = useCallback((file: File): boolean => {
-    const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+    const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase()
     if (!ALLOWED_TYPES.includes(ext)) {
       setFileError(`Only ${ALLOWED_TYPES.join(', ')} are allowed.`)
       return false
@@ -404,18 +262,20 @@ export default function Chat() {
   const addFiles = useCallback(
     (files: FileList | null) => {
       if (!files?.length) return
-      const next: File[] = []
+
       for (let i = 0; i < files.length; i++) {
-        const f = files[i]
-        if (validateFile(f)) next.push(f)
+        const candidate = files[i]
+        if (validateFile(candidate)) {
+          setAttachedFiles([candidate])
+          return
+        }
       }
-      setAttachedFiles((prev) => [...prev, ...next])
     },
     [validateFile]
   )
 
-  const removeFile = useCallback((index: number) => {
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== index))
+  const removeFile = useCallback(() => {
+    setAttachedFiles([])
     setFileError('')
   }, [])
 
@@ -438,7 +298,9 @@ export default function Chat() {
     setIsDragging(false)
   }, [])
 
-  const onAttachClick = () => fileInputRef.current?.click()
+  const onAttachClick = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
 
   const autoResize = useCallback((textarea: HTMLTextAreaElement | null) => {
     if (!textarea) return
@@ -449,408 +311,228 @@ export default function Chat() {
 
   useEffect(() => {
     autoResize(queryInputRef.current)
-  }, [query, autoResize])
+  }, [autoResize, query])
 
-  useEffect(() => {
-    if (viewMode !== 'chat') return
-    autoResize(queryInputRef.current)
-  }, [autoResize, viewMode])
+  const loadArtifacts = useCallback(async (nextAnalysisId: string) => {
+    setIsLoadingArtifacts(true)
+    setRequestError('')
 
-  const topClusters = useMemo(() => {
-    if (!results) return []
-    return [...results.clusters]
-      .sort((a, b) => getClusterSize(b) - getClusterSize(a))
-      .slice(0, 5)
-  }, [results])
+    try {
+      const [overview, map, clusters, granulate, hierarchy] = await Promise.all([
+        with409Retry(() => getAnalysisOverview(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
+        with409Retry(() => getAnalysisMap(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
+        with409Retry(() => getAnalysisClusters(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
+        with409Retry(() => getAnalysisGranulate(nextAnalysisId, false), ARTIFACT_TIMEOUT_MS),
+        with409Retry(() => getAnalysisHierarchy(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
+      ])
 
-  const statsEntries = useMemo(() => {
-    if (!results) return [] as Array<[string, string]>
-
-    const primitiveStats = Object.entries(results.stats)
-      .filter(([, value]) => ['number', 'string', 'boolean'].includes(typeof value))
-      .map(([key, value]) => [formatStatKey(key), String(value)] as [string, string])
-
-    const fallbackStats: Array<[string, string]> = [
-      ['Points', String(results.points.length)],
-      ['Clusters', String(results.clusters.length)],
-    ]
-
-    return primitiveStats.length > 0 ? primitiveStats : fallbackStats
-  }, [results])
-
-  const visiblePoints = useMemo(() => {
-    if (!results) return []
-    if (selectedClusterId === null) return results.points
-    return results.points.filter((point) => String(point.cluster_id) === String(selectedClusterId))
-  }, [results, selectedClusterId])
-
-  const aspectSummaries = useMemo(() => {
-    if (!granulateResult) return [] as AspectSummary[]
-
-    const grouped = new Map<string, GranulateGranule[]>()
-    for (const granule of granulateResult.granules) {
-      const aspect = granule.aspect?.trim() || 'Uncategorized'
-      const list = grouped.get(aspect)
-      if (list) list.push(granule)
-      else grouped.set(aspect, [granule])
-    }
-
-    const backendSummary = granulateResult.aspect_summary ?? {}
-    const summaries: AspectSummary[] = []
-
-    for (const [aspect, granules] of grouped.entries()) {
-      const backend = backendSummary[aspect]
-      const backendCount = typeof backend?.count === 'number' ? backend.count : undefined
-      const backendAvgRaw = backend?.avg_sentiment
-      const backendAvg =
-        typeof backendAvgRaw === 'number'
-          ? backendAvgRaw
-          : typeof backendAvgRaw === 'string'
-            ? normalizeSentiment(backendAvgRaw) === 'positive'
-              ? 1
-              : normalizeSentiment(backendAvgRaw) === 'negative'
-                ? -1
-                : 0
-            : averageSentiment(granules)
-      const evidence = Array.isArray(backend?.top_evidence) && backend.top_evidence.length > 0
-        ? backend.top_evidence
-        : topEvidence(granules)
-
-      summaries.push({
-        aspect,
-        count: backendCount ?? granules.length,
-        avgSentimentScore: backendAvg,
-        avgSentimentLabel: avgSentimentLabel(backendAvg),
-        topEvidence: evidence,
-        granules,
+      setArtifacts({
+        overview,
+        map,
+        clusters,
+        granulate,
+        hierarchy,
       })
+    } finally {
+      setIsLoadingArtifacts(false)
     }
-
-    for (const [aspect, backend] of Object.entries(backendSummary)) {
-      if (grouped.has(aspect)) continue
-      if (typeof backend?.count !== 'number' || backend.count <= 0) continue
-      const backendAvgRaw = backend.avg_sentiment
-      const backendAvg =
-        typeof backendAvgRaw === 'number'
-          ? backendAvgRaw
-          : typeof backendAvgRaw === 'string'
-            ? normalizeSentiment(backendAvgRaw) === 'positive'
-              ? 1
-              : normalizeSentiment(backendAvgRaw) === 'negative'
-                ? -1
-                : 0
-            : 0
-      summaries.push({
-        aspect,
-        count: backend.count,
-        avgSentimentScore: backendAvg,
-        avgSentimentLabel: avgSentimentLabel(backendAvg),
-        topEvidence: backend.top_evidence ?? [],
-        granules: [],
-      })
-    }
-
-    return summaries.sort((a, b) => b.count - a.count)
-  }, [granulateResult])
-
-  const visibleAspectSummaries = useMemo(() => {
-    if (showOtherAspects) return aspectSummaries
-    return aspectSummaries.filter((summary) => summary.aspect.trim().toUpperCase() !== 'OTHER')
-  }, [aspectSummaries, showOtherAspects])
-
-  const highlightedGranules = useMemo(() => {
-    if (!granulateResult) return [] as GranulateGranule[]
-
-    const source = Array.isArray(granulateResult.highlights) && granulateResult.highlights.length > 0
-      ? granulateResult.highlights
-      : granulateResult.granules
-
-    return [...source].sort((a, b) => granuleConfidence(b) - granuleConfidence(a)).slice(0, 3)
-  }, [granulateResult])
-
-  const aspectAccordions = useMemo<AspectAccordionSection[]>(() => {
-    return visibleAspectSummaries
-      .map((summary) => {
-        const filtered = summary.granules.filter((granule) => {
-          if (granuleSentimentFilter === 'all') return true
-          return normalizeSentiment(granule.sentiment) === granuleSentimentFilter
-        })
-
-        const sorted = [...filtered].sort((a, b) => {
-          if (granuleSortMode === 'similarity') {
-            return (b.similarity ?? 0) - (a.similarity ?? 0)
-          }
-          if (granuleSortMode === 'sentiment') {
-            return sentimentScore(b) - sentimentScore(a)
-          }
-          return granuleConfidence(b) - granuleConfidence(a)
-        })
-
-        const avgScore = averageSentiment(sorted.length > 0 ? sorted : summary.granules)
-        return {
-          ...summary,
-          granules: sorted,
-          displayCount: sorted.length,
-          displayAvgSentimentLabel: avgSentimentLabel(avgScore),
-        }
-      })
-      .filter((summary) => summary.granules.length > 0 || summary.count > 0)
-  }, [granuleSentimentFilter, granuleSortMode, visibleAspectSummaries])
-
-  useEffect(() => {
-    if (aspectAccordions.length === 0) return
-    setOpenAspects((prev) => {
-      const next = { ...prev }
-      for (const section of aspectAccordions) {
-        if (next[section.aspect] === undefined) {
-          next[section.aspect] = true
-        }
-      }
-      return next
-    })
-  }, [aspectAccordions])
-
-  const toggleAspect = useCallback((aspect: string) => {
-    setOpenAspects((prev) => ({
-      ...prev,
-      [aspect]: !prev[aspect],
-    }))
-  }, [])
-
-  const jumpToAspect = useCallback((aspect: string) => {
-    const normalizedAspect = aspect.trim() || 'Uncategorized'
-    if (normalizedAspect.toUpperCase() === 'OTHER') {
-      setShowOtherAspects(true)
-    }
-
-    setOpenAspects((prev) => ({
-      ...prev,
-      [normalizedAspect]: true,
-    }))
-    requestAnimationFrame(() => {
-      const section = aspectRefs.current[normalizedAspect]
-      section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
   }, [])
 
   const runProjectFlow = useCallback(async () => {
-    if (isSubmitting) return
+    if (isRunning || isLoadingArtifacts) return
 
     setRequestError('')
     setFileError('')
 
     const file = attachedFiles[0]
-    const promptText = query.trim()
-    if (!file && !promptText) {
-      setFileError('Please attach a file or enter text to granulate.')
+    const text = query.trim()
+
+    if (!file && !text) {
+      setFileError('Please attach a CSV file or enter text to analyze.')
       return
     }
 
-    if (!file && promptText) {
-      setIsSubmitting(true)
-      setRunStatus('granulating')
-      setViewMode('chat')
-      setResults({
-        project_id: 'text-only',
-        stats: {},
-        points: [],
-        clusters: [],
-      })
-      setProjectId(null)
-      setActiveTab('Granulate')
-      setSelectedClusterId(null)
-      setSelectedTextPreview('')
-      setClassifyResult(null)
-      setClassifyError('')
-      setGranulateText(promptText)
-      setGranulateResult(null)
-      setGranulateError('')
-      setOpenAspects({})
-      setExpandedEvidence({})
-      setExpandedSummaryEvidence({})
-      setShowOtherAspects(false)
-
-      try {
-        const taxonomy = useTaxonomy ? parseTaxonomyInput(taxonomyText) : undefined
-        const payload: {
-          text: string
-          taxonomy?: Record<string, string[]>
-          top_k_evidence: number
-          min_similarity: number
-        } = {
-          text: promptText,
-          top_k_evidence: topKEvidence,
-          min_similarity: minSimilarity,
-        }
-        if (taxonomy) payload.taxonomy = taxonomy
-
-        const response = await requestJson<GranulateResponse>('/granulate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        setGranulateResult(response)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Granulate request failed'
-        setGranulateError(message)
-      } finally {
-        setIsSubmitting(false)
-      }
-      return
-    }
-
-    const analysisName = buildAnalysisName(query, file)
-
-    setIsSubmitting(true)
-    setRunStatus('creating_project')
-    setViewMode('chat')
-    setResults(null)
-    setProjectId(null)
+    setArtifacts(createEmptyArtifacts())
+    setSelection(createInitialAnalysisSelectionState())
     setActiveTab('Overview')
-    setSelectedClusterId(null)
-    setSelectedTextPreview('')
-    setClassifyResult(null)
-    setClassifyError('')
-    setGranulateResult(null)
-    setGranulateError('')
-    setGranulateText(query.trim())
-    setOpenAspects({})
-    setExpandedEvidence({})
-    setExpandedSummaryEvidence({})
-    setShowOtherAspects(false)
+    setViewMode('chat')
+    resetRun()
+    setDisplayProgress(0)
+    setStageStartedAt(Date.now())
+    setProgressTicker(0)
 
     try {
-      const formData = new FormData()
-      formData.append('analysis_name', analysisName)
-      formData.append('file', file)
-
-      const created = await requestJson<ProjectCreated>('/projects', {
-        method: 'POST',
-        body: formData,
+      const nextAnalysisId = await startAnalysis({
+        inputType: file ? 'csv' : 'text',
+        file: file ?? undefined,
+        text: file ? undefined : text,
+        options: {
+          granulate: true,
+          granulate_return_items: false,
+        },
       })
 
-      const nextProjectId = created.project_id
-      setProjectId(nextProjectId)
-
-      const runResponse = await requestJson<ProjectStatus>(`/projects/${nextProjectId}/run`, {
-        method: 'POST',
-      })
-      setRunStatus(runResponse.status)
-
-      const start = Date.now()
-      let terminalStatus: ProjectStatus | null = null
-
-      while (Date.now() - start < POLL_TIMEOUT_MS) {
-        const current = await requestJson<ProjectStatus>(`/projects/${nextProjectId}`)
-        setRunStatus(current.status)
-
-        if (isFailedStatus(current.status)) {
-          throw new Error('Project analysis failed.')
-        }
-
-        if (isCompletedStatus(current.status)) {
-          terminalStatus = current
-          break
-        }
-
-        await wait(POLL_INTERVAL_MS)
-      }
-
-      if (!terminalStatus) {
-        throw new Error('Project analysis timed out after 120 seconds.')
-      }
-
-      const nextResults = await requestJson<ProjectResults>(`/projects/${nextProjectId}/results`)
-      setResults(nextResults)
-      setRunStatus(terminalStatus.status)
+      setViewMode('analysis')
+      await loadArtifacts(nextAnalysisId)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Request failed'
       setRequestError(message)
-    } finally {
-      setIsSubmitting(false)
     }
-  }, [attachedFiles, isSubmitting, minSimilarity, query, taxonomyText, topKEvidence, useTaxonomy])
+  }, [attachedFiles, isLoadingArtifacts, isRunning, loadArtifacts, query, resetRun, startAnalysis])
 
-  const runClassify = useCallback(async () => {
-    if (!projectId || isClassifying) return
+  const loadGranulateItems = useCallback(async () => {
+    if (!analysisId) return
 
-    const text = classifyText.trim()
-    if (!text) {
-      setClassifyError('Enter text to classify.')
+    setIsLoadingGranulateItems(true)
+    setRequestError('')
+
+    try {
+      const granulate = await with409Retry(
+        () => getAnalysisGranulate(analysisId, true),
+        ARTIFACT_TIMEOUT_MS
+      )
+      setArtifacts((prev) => ({
+        ...prev,
+        granulate,
+      }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load item-level granulate.'
+      setRequestError(message)
+    } finally {
+      setIsLoadingGranulateItems(false)
+    }
+  }, [analysisId])
+
+  const retryCurrentAnalysis = useCallback(() => {
+    if (!analysisId) return
+    void loadArtifacts(analysisId).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : 'Failed to reload artifacts.'
+      setRequestError(message)
+    })
+  }, [analysisId, loadArtifacts])
+
+  const hasAnalysisData = useMemo(() => {
+    return analysisId !== null || Object.values(artifacts).some(Boolean)
+  }, [analysisId, artifacts])
+
+  const selectedClusterId = selection.selectedClusterId
+  const selectedPointId = selection.selectedPointId
+
+  const selectCluster = useCallback((clusterId: number | null) => {
+    setSelection((prev) => withSelectedCluster(prev, clusterId))
+  }, [])
+
+  const selectPoint = useCallback((pointId: string | null, clusterId?: number | null) => {
+    setSelection((prev) => withSelectedPoint(prev, pointId, clusterId))
+  }, [])
+
+  const clearFilters = useCallback(() => {
+    setSelection((prev) => clearAnalysisSelection(prev))
+  }, [])
+
+  const runStatus = useMemo(() => {
+    const stage = status?.progress.stage as RunStage | undefined
+    const backendPct = clampProgress(status?.progress.pct ?? 0)
+
+    if (!stage) {
+      if (isLoadingArtifacts && !isRunning) {
+        return {
+          title: 'Preparing results',
+          detail: 'Loading analysis artifacts',
+          targetProgress: 99,
+          backendPct,
+          stepText: 'Finalizing',
+          indeterminate: true,
+        }
+      }
+
+      if (isRunning) {
+        const bootstrap = Math.min(12, 4 + progressTicker * 0.35)
+        return {
+          title: 'Starting analysis',
+          detail: 'Waiting for first progress update',
+          targetProgress: bootstrap,
+          backendPct: 0,
+          stepText: 'Initializing',
+          indeterminate: true,
+        }
+      }
+
+      return {
+        title: '',
+        detail: '',
+        targetProgress: 0,
+        backendPct: 0,
+        stepText: '',
+        indeterminate: false,
+      }
+    }
+
+    const meta = RUN_STAGE_META[stage]
+    const isTerminal = stage === 'completed' || stage === 'failed'
+    const elapsedSec = Math.max(0, (Date.now() - stageStartedAt) / 1000)
+    const stageSpan = Math.max(meta.max - meta.min - 0.6, 0)
+    const synthetic = meta.min + Math.min(elapsedSec * 1.2, stageSpan)
+    const boundedBackend = Math.max(meta.min, Math.min(meta.max, backendPct))
+    let targetProgress = Math.max(boundedBackend, synthetic)
+
+    if (stage === 'completed') {
+      targetProgress = 100
+    } else if (stage === 'failed') {
+      targetProgress = boundedBackend
+    } else if (isLoadingArtifacts && !isRunning) {
+      targetProgress = Math.max(targetProgress, 99)
+    }
+
+    const activeStageCount = RUN_STAGES.length - 2
+    const stepIndex = Math.max(0, RUN_STAGES.indexOf(stage as RunStage))
+    const stepText = isTerminal ? 'Done' : `Step ${Math.min(stepIndex + 1, activeStageCount)}/${activeStageCount}`
+
+    return {
+      title: meta.label,
+      detail: meta.detail,
+      targetProgress,
+      backendPct,
+      stepText,
+      indeterminate: false,
+    }
+  }, [isLoadingArtifacts, isRunning, progressTicker, stageStartedAt, status])
+
+  useEffect(() => {
+    const stage = status?.progress.stage
+    if (!stage) return
+    setStageStartedAt(Date.now())
+  }, [status?.progress.stage])
+
+  useEffect(() => {
+    if (!isRunning && !isLoadingArtifacts) return
+    const timer = window.setInterval(() => {
+      setProgressTicker((prev) => prev + 1)
+    }, 250)
+    return () => window.clearInterval(timer)
+  }, [isLoadingArtifacts, isRunning])
+
+  useEffect(() => {
+    if (!isRunning && !isLoadingArtifacts && !analysisId && !status) {
+      setDisplayProgress(0)
       return
     }
 
-    setIsClassifying(true)
-    setClassifyError('')
-    setClassifyResult(null)
-
-    try {
-      const response = await requestJson<ClassifyResponse>(`/projects/${projectId}/classify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+    const timer = window.setInterval(() => {
+      setDisplayProgress((prev) => {
+        const target = clampProgress(runStatus.targetProgress)
+        const diff = target - prev
+        if (Math.abs(diff) < 0.08) return target
+        const scaledStep = diff * 0.2
+        const cappedStep = Math.sign(diff) * Math.min(Math.abs(scaledStep), 2.4)
+        return clampProgress(prev + cappedStep)
       })
-      setClassifyResult(response)
-      setSelectedClusterId(response.cluster_id)
-      setSelectedTextPreview(response.text_preview ?? text)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Classification failed'
-      setClassifyError(message)
-    } finally {
-      setIsClassifying(false)
-    }
-  }, [classifyText, isClassifying, projectId])
+    }, 32)
 
-  const runGranulate = useCallback(async () => {
-    if (isGranulating) return
+    return () => window.clearInterval(timer)
+  }, [analysisId, isLoadingArtifacts, isRunning, runStatus.targetProgress, status])
 
-    const text = granulateText.trim()
-    if (!text) {
-      setGranulateError('Enter text to granulate.')
-      return
-    }
-
-    setIsGranulating(true)
-    setGranulateError('')
-    setViewMode('analysis')
-    setOpenAspects({})
-    setExpandedEvidence({})
-    setExpandedSummaryEvidence({})
-    setShowOtherAspects(false)
-
-    const taxonomy = useTaxonomy ? parseTaxonomyInput(taxonomyText) : undefined
-
-    const payload: {
-      text: string
-      taxonomy?: Record<string, string[]>
-      top_k_evidence: number
-      min_similarity: number
-    } = {
-      text,
-      top_k_evidence: topKEvidence,
-      min_similarity: minSimilarity,
-    }
-
-    if (taxonomy) {
-      payload.taxonomy = taxonomy
-    }
-
-    const path = projectId ? `/projects/${projectId}/granulate` : '/granulate'
-
-    try {
-      const response = await requestJson<GranulateResponse>(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      setGranulateResult(response)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Granulate request failed'
-      setGranulateError(message)
-    } finally {
-      setIsGranulating(false)
-    }
-  }, [granulateText, isGranulating, minSimilarity, projectId, taxonomyText, topKEvidence, useTaxonomy])
+  const activeError = requestError || runError
 
   return (
     <div className="chat-page">
@@ -897,7 +579,7 @@ export default function Chat() {
         </header>
 
         <main className="chat-content">
-          {results && (
+          {hasAnalysisData && (
             <div className="chat-view-segmented" role="tablist" aria-label="View mode">
               <button
                 type="button"
@@ -920,7 +602,7 @@ export default function Chat() {
             </div>
           )}
 
-          {(!results || viewMode === 'chat') && (
+          {(!hasAnalysisData || viewMode === 'chat') && (
             <>
               <div className="chat-greeting-wrap">
                 <div
@@ -966,10 +648,9 @@ export default function Chat() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.txt,.pdf,text/csv,text/plain,application/pdf"
-                  multiple
+                  accept=".csv,text/csv"
                   className="chat-file-input"
-                  aria-label="Attach files"
+                  aria-label="Attach CSV file"
                   onChange={(e) => {
                     addFiles(e.target.files)
                     e.target.value = ''
@@ -982,59 +663,79 @@ export default function Chat() {
                   <textarea
                     ref={queryInputRef}
                     className="chat-input chat-input-textarea"
-                    placeholder="Load your Data and analyze it like a pro in seconds"
+                    placeholder="Paste text directly or attach a CSV file"
                     value={query}
                     onChange={(e) => {
                       setQuery(e.target.value)
                       autoResize(e.currentTarget)
                     }}
-                    aria-label="Ask AI"
+                    aria-label="Analysis input text"
                     rows={1}
                   />
                 </div>
+
                 <div className="chat-input-toolbar">
                   <button
                     type="button"
                     className="chat-toolbar-btn"
                     onClick={onAttachClick}
-                    aria-label="Attach files (CSV, TXT, PDF)"
-                    disabled={isSubmitting}
+                    aria-label="Attach CSV"
+                    disabled={isRunning || isLoadingArtifacts}
                   >
                     <ChatIconAttach />
-                    <span>Attach</span>
+                    <span>Attach CSV</span>
                   </button>
-                  <span className="chat-toolbar-hint">CSV, TXT or PDF</span>
+                  <span className="chat-toolbar-hint">CSV file or plain text</span>
                   <button
                     type="button"
                     className="chat-send-btn"
-                    aria-label="Send"
+                    aria-label="Run analysis"
                     onClick={runProjectFlow}
-                    disabled={isSubmitting}
+                    disabled={isRunning || isLoadingArtifacts}
                   >
                     <ChatIconSend />
                   </button>
                 </div>
-                {isSubmitting && (
-                  <p className="chat-run-status" role="status">
-                    Running analysis{runStatus ? ` (${runStatus})` : '...'}
-                  </p>
+
+                {(isRunning || isLoadingArtifacts) && (
+                  <div className="chat-run-status" role="status" aria-live="polite">
+                    <div className="chat-run-status-head">
+                      <span className="chat-run-status-title">{runStatus.title}</span>
+                      <span className="chat-run-status-pct">{Math.round(displayProgress)}%</span>
+                    </div>
+                    <div className="chat-run-progress" aria-hidden>
+                      <div
+                        className={`chat-run-progress-fill ${
+                          runStatus.indeterminate ? 'chat-run-progress-fill--indeterminate' : ''
+                        }`}
+                        style={{ width: `${Math.max(2, displayProgress)}%` }}
+                      />
+                    </div>
+                    <p className="chat-run-status-detail">
+                      {runStatus.stepText}
+                      {runStatus.detail ? ` · ${runStatus.detail}` : ''}
+                      {!runStatus.indeterminate ? ` · backend ${runStatus.backendPct}%` : ''}
+                    </p>
+                  </div>
                 )}
-                {!isSubmitting && results && (
+
+                {!isRunning && !isLoadingArtifacts && hasAnalysisData && (
                   <p className="chat-run-status" role="status">
                     Analysis ready. Switch to <strong>Analysis</strong> to explore results.
                   </p>
                 )}
+
                 {attachedFiles.length > 0 && (
                   <div className="chat-attached-list">
-                    {attachedFiles.map((f, i) => (
-                      <span key={`${f.name}-${i}`} className="chat-attached-tag">
+                    {attachedFiles.map((f) => (
+                      <span key={f.name} className="chat-attached-tag">
                         {f.name}
                         <button
                           type="button"
                           className="chat-attached-remove"
-                          onClick={() => removeFile(i)}
+                          onClick={removeFile}
                           aria-label={`Remove ${f.name}`}
-                          disabled={isSubmitting}
+                          disabled={isRunning || isLoadingArtifacts}
                         >
                           x
                         </button>
@@ -1042,21 +743,22 @@ export default function Chat() {
                     ))}
                   </div>
                 )}
+
                 {fileError && (
                   <p className="chat-file-error" role="alert">
                     {fileError}
                   </p>
                 )}
-                {requestError && (
+                {activeError && (
                   <p className="chat-file-error" role="alert">
-                    {requestError}
+                    {activeError}
                   </p>
                 )}
               </div>
             </>
           )}
 
-          {results && viewMode === 'analysis' && (
+          {hasAnalysisData && viewMode === 'analysis' && (
             <section className="chat-results-wrap">
               <div className="chat-tabs" role="tablist" aria-label="Results Explorer Tabs">
                 {RESULT_TABS.map((tab) => (
@@ -1071,193 +773,78 @@ export default function Chat() {
                     {tab}
                   </button>
                 ))}
+                <button type="button" className="chat-plain-btn" onClick={clearFilters}>
+                  Clear filters
+                </button>
               </div>
 
               {activeTab === 'Overview' && (
-                <div className="chat-result-panel">
-                  <h3 className="chat-result-title">Overview</h3>
-                  <div className="chat-stats-grid">
-                    {statsEntries.map(([key, value]) => (
-                      <div key={key} className="chat-stat-card">
-                        <span className="chat-stat-key">{key}</span>
-                        <span className="chat-stat-value">{value}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <h4 className="chat-result-subtitle">Top clusters</h4>
-                  <div className="chat-list-grid">
-                    {topClusters.length === 0 && <p className="chat-muted-text">No clusters available.</p>}
-                    {topClusters.map((cluster) => (
-                      <button
-                        key={String(cluster.cluster_id)}
-                        type="button"
-                        className="chat-list-item"
-                        onClick={() => {
-                          setSelectedClusterId(cluster.cluster_id)
-                          setActiveTab('Map')
-                        }}
-                      >
-                        <span>{getClusterLabel(cluster)}</span>
-                        <strong>{getClusterSize(cluster)}</strong>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <OverviewTab
+                  data={artifacts.overview}
+                  isLoading={isRunning || isLoadingArtifacts}
+                  error={activeError}
+                  onRetry={retryCurrentAnalysis}
+                  onSelectCluster={(clusterId) => {
+                    selectCluster(clusterId)
+                    setActiveTab('Map')
+                  }}
+                />
               )}
 
               {activeTab === 'Map' && (
-                <div className="chat-result-panel">
-                  <h3 className="chat-result-title">Map</h3>
-                  <p className="chat-muted-text">
-                    {selectedClusterId === null
-                      ? `Showing ${visiblePoints.length} points`
-                      : `Showing ${visiblePoints.length} points for cluster ${selectedClusterId}`}
-                  </p>
-                  <div className="chat-map-table" role="table" aria-label="Map points">
-                    <div className="chat-map-row chat-map-row--head" role="row">
-                      <span>X</span>
-                      <span>Y</span>
-                      <span>Cluster</span>
-                      <span>Preview</span>
-                    </div>
-                    {visiblePoints.length === 0 && (
-                      <div className="chat-map-row" role="row">
-                        <span className="chat-muted-text">No points available.</span>
-                      </div>
-                    )}
-                    {visiblePoints.slice(0, 200).map((point, index) => {
-                      const isSelected = selectedTextPreview === (point.text_preview ?? '')
-                      return (
-                        <button
-                          key={`${point.cluster_id}-${index}-${point.x}-${point.y}`}
-                          type="button"
-                          className={`chat-map-row chat-map-row--button ${isSelected ? 'chat-map-row--active' : ''}`}
-                          onClick={() => {
-                            setSelectedClusterId(point.cluster_id)
-                            setSelectedTextPreview(point.text_preview ?? '')
-                          }}
-                        >
-                          <span>{formatNumber(point.x)}</span>
-                          <span>{formatNumber(point.y)}</span>
-                          <span>{point.cluster_id}</span>
-                          <span>{point.text_preview ?? '-'}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
+                <MapTab
+                  data={artifacts.map}
+                  selectedClusterId={selectedClusterId}
+                  selectedPointId={selectedPointId}
+                  onSelectCluster={selectCluster}
+                  onSelectPoint={selectPoint}
+                  isLoading={isRunning || isLoadingArtifacts}
+                  error={activeError}
+                  onRetry={retryCurrentAnalysis}
+                />
               )}
 
               {activeTab === 'Clusters' && (
-                <div className="chat-result-panel">
-                  <h3 className="chat-result-title">Clusters</h3>
-                  <div className="chat-list-grid">
-                    {results.clusters.length === 0 && <p className="chat-muted-text">No clusters available.</p>}
-                    {results.clusters.map((cluster) => {
-                      const isActive =
-                        selectedClusterId !== null && String(selectedClusterId) === String(cluster.cluster_id)
-                      return (
-                        <button
-                          key={String(cluster.cluster_id)}
-                          type="button"
-                          className={`chat-list-item ${isActive ? 'chat-list-item--active' : ''}`}
-                          onClick={() => {
-                            setSelectedClusterId(cluster.cluster_id)
-                            setActiveTab('Map')
-                          }}
-                        >
-                          <span>{getClusterLabel(cluster)}</span>
-                          <strong>{getClusterSize(cluster)}</strong>
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  <h4 className="chat-result-subtitle">Classify new text</h4>
-                  <div className="chat-inline-form">
-                    <input
-                      type="text"
-                      className="chat-input chat-inline-input"
-                      value={classifyText}
-                      onChange={(e) => setClassifyText(e.target.value)}
-                      placeholder="Type text to classify"
-                      aria-label="Classify new text"
-                    />
-                    <button
-                      type="button"
-                      className="chat-send-btn chat-send-btn--compact"
-                      onClick={runClassify}
-                      disabled={isClassifying}
-                    >
-                      <ChatIconSend />
-                    </button>
-                  </div>
-                  {classifyError && (
-                    <p className="chat-file-error" role="alert">
-                      {classifyError}
-                    </p>
-                  )}
-                  {classifyResult && (
-                    <p className="chat-muted-text">
-                      Predicted: {classifyResult.cluster_label ?? `Cluster ${classifyResult.cluster_id}`} |
-                      Confidence margin:{' '}
-                      {typeof classifyResult.confidence_margin === 'number'
-                        ? classifyResult.confidence_margin.toFixed(3)
-                        : 'N/A'}
-                    </p>
-                  )}
-                </div>
+                <ClustersTab
+                  data={artifacts.clusters}
+                  selectedClusterId={selectedClusterId}
+                  onSelectCluster={selectCluster}
+                  onFocusRepresentative={(pointId, clusterId) => {
+                    selectPoint(pointId, clusterId)
+                    setActiveTab('Map')
+                  }}
+                  isLoading={isRunning || isLoadingArtifacts}
+                  error={activeError}
+                  onRetry={retryCurrentAnalysis}
+                />
               )}
 
               {activeTab === 'Granulate' && (
-                <GranulatePanel
-                  granulateText={granulateText}
-                  setGranulateText={setGranulateText}
-                  minSimilarity={minSimilarity}
-                  setMinSimilarity={setMinSimilarity}
-                  topKEvidence={topKEvidence}
-                  setTopKEvidence={setTopKEvidence}
-                  useTaxonomy={useTaxonomy}
-                  setUseTaxonomy={setUseTaxonomy}
-                  taxonomyText={taxonomyText}
-                  setTaxonomyText={setTaxonomyText}
-                  runGranulate={runGranulate}
-                  isGranulating={isGranulating}
-                  granulateError={granulateError}
-                  granulateResult={granulateResult}
-                  visibleAspectSummaries={visibleAspectSummaries}
-                  expandedSummaryEvidence={expandedSummaryEvidence}
-                  setExpandedSummaryEvidence={setExpandedSummaryEvidence}
-                  highlightedGranules={highlightedGranules}
-                  jumpToAspect={jumpToAspect}
-                  granuleSortMode={granuleSortMode}
-                  setGranuleSortMode={setGranuleSortMode}
-                  granuleSentimentFilter={granuleSentimentFilter}
-                  setGranuleSentimentFilter={setGranuleSentimentFilter}
-                  showOtherAspects={showOtherAspects}
-                  setShowOtherAspects={setShowOtherAspects}
-                  aspectAccordions={aspectAccordions}
-                  openAspects={openAspects}
-                  toggleAspect={toggleAspect}
-                  expandedEvidence={expandedEvidence}
-                  setExpandedEvidence={setExpandedEvidence}
-                  normalizeSentiment={normalizeSentiment}
-                  formatAspectLabel={formatAspectLabel}
-                  sentimentLabel={sentimentLabel}
-                  granuleConfidence={granuleConfidence}
-                  aspectRefs={aspectRefs}
+                <GranulateTab
+                  data={artifacts.granulate}
+                  isLoading={isRunning || isLoadingArtifacts}
+                  error={activeError}
+                  isLoadingItems={isLoadingGranulateItems}
+                  onRetry={retryCurrentAnalysis}
+                  onLoadItems={loadGranulateItems}
                 />
               )}
 
               {activeTab === 'Hierarchy' && (
-                <div className="chat-result-panel">
-                  <h3 className="chat-result-title">Hierarchy</h3>
-                  <p className="chat-muted-text">
-                    Hierarchical dendrogram coming soon. For now, adjust granularity using Granulate
-                    (min_similarity) and explore clusters in the Map/Clusters tabs.
-                  </p>
-                </div>
+                <HierarchyTab
+                  data={artifacts.hierarchy}
+                  selectedClusterId={selectedClusterId}
+                  selectedPointId={selectedPointId}
+                  onSelectCluster={selectCluster}
+                  onSelectPoint={(pointId, clusterId) => {
+                    selectPoint(pointId, clusterId)
+                    setActiveTab('Map')
+                  }}
+                  onClearFilters={clearFilters}
+                  isLoading={isRunning || isLoadingArtifacts}
+                  error={activeError}
+                  onRetry={retryCurrentAnalysis}
+                />
               )}
             </section>
           )}
@@ -1269,37 +856,86 @@ export default function Chat() {
 
 function ChatIconHome() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <polyline points="9 22 9 12 15 12 15 22" />
     </svg>
   )
 }
+
 function ChatIconBubble() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   )
 }
+
 function ChatIconClock() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="12" cy="12" r="10" />
       <polyline points="12 6 12 12 16 14" />
     </svg>
   )
 }
+
 function ChatIconFolder() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
     </svg>
   )
 }
+
 function ChatIconShare() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="18" cy="5" r="3" />
       <circle cx="6" cy="12" r="3" />
       <circle cx="18" cy="19" r="3" />
@@ -1308,50 +944,112 @@ function ChatIconShare() {
     </svg>
   )
 }
+
 function ChatIconDatabase() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <ellipse cx="12" cy="5" rx="9" ry="3" />
       <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
     </svg>
   )
 }
+
 function ChatIconSupport() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
   )
 }
+
 function ChatIconSettings() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   )
 }
+
 function ChatIconSpark() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3l1.9 3.9L18 9l-4.1 2.1L12 15l-1.9-3.9L6 9l4.1-2.1L12 3z" />
+      <path d="M5 19l.95 1.95L8 22l-2.05 1.05L5 25l-.95-1.95L2 22l2.05-1.05L5 19z" />
     </svg>
   )
 }
+
 function ChatIconAttach() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21.44 11.05l-8.49 8.49a5.5 5.5 0 0 1-7.78-7.78l8.49-8.49a3.5 3.5 0 1 1 4.95 4.95l-8.49 8.49a1.5 1.5 0 0 1-2.12-2.12l7.07-7.07" />
     </svg>
   )
 }
+
 function ChatIconSend() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m22 2-7 20-4-9-9-4Z" />
-      <path d="M22 2 11 13" />
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
     </svg>
   )
 }
