@@ -1,13 +1,22 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { HierarchyResponse } from '../../api/analysis.types'
+import {
+  getClusterLinkColor,
+  getClusterNodeFill,
+  getClusterNodeStroke,
+  humanThemeLabel,
+} from '../../utils/insightsTheme'
 
 type DendrogramProps = {
   hierarchy: HierarchyResponse
   selectedClusterId: number | null
   selectedPointId: string | null
+  selectedNodeId: string | null
   onSelectCluster: (clusterId: number | null) => void
-  onSelectPoint: (pointId: string | null, clusterId?: number | null) => void
+  onSelectPoint: (pointId: string | null, clusterId?: number | null, nodeId?: string | null) => void
+  onSelectNode?: (nodeId: string | null, clusterId?: number | null) => void
   onInspectNode?: (inspection: HierarchyInspection | null) => void
+  showMergeScale?: boolean
 }
 
 export type HierarchyInspection = {
@@ -17,11 +26,13 @@ export type HierarchyInspection = {
   height: number
   dominantClusterId: number | null
   descendantLeafCount: number
+  descendantLeafIds: string[]
 }
 
 type HierarchyLeaf = HierarchyResponse['leaves'][number]
 
-const SVG_WIDTH = 1180
+const MIN_SVG_WIDTH = 1100
+const PER_LEAF_WIDTH = 42
 const SVG_HEIGHT = 640
 const SVG_MARGIN = 48
 const HEIGHT_EASING_EXPONENT = 0.82
@@ -34,31 +45,12 @@ type ClusterStyle = {
   nodeStroke: string
 }
 
-const CLUSTER_PALETTE: ClusterStyle[] = [
-  { link: 'rgba(104, 126, 150, 0.62)', nodeFill: 'rgba(104, 126, 150, 0.22)', nodeStroke: '#526a84' },
-  { link: 'rgba(104, 142, 128, 0.62)', nodeFill: 'rgba(104, 142, 128, 0.22)', nodeStroke: '#4f6f62' },
-  { link: 'rgba(125, 132, 168, 0.62)', nodeFill: 'rgba(125, 132, 168, 0.22)', nodeStroke: '#58608a' },
-  { link: 'rgba(150, 126, 110, 0.62)', nodeFill: 'rgba(150, 126, 110, 0.22)', nodeStroke: '#7f6655' },
-  { link: 'rgba(128, 146, 104, 0.62)', nodeFill: 'rgba(128, 146, 104, 0.22)', nodeStroke: '#63754c' },
-  { link: 'rgba(134, 120, 147, 0.62)', nodeFill: 'rgba(134, 120, 147, 0.22)', nodeStroke: '#675975' },
-  { link: 'rgba(103, 146, 152, 0.62)', nodeFill: 'rgba(103, 146, 152, 0.22)', nodeStroke: '#4f7478' },
-  { link: 'rgba(150, 121, 132, 0.62)', nodeFill: 'rgba(150, 121, 132, 0.22)', nodeStroke: '#7a5864' },
-  { link: 'rgba(117, 136, 112, 0.62)', nodeFill: 'rgba(117, 136, 112, 0.22)', nodeStroke: '#5b6e54' },
-  { link: 'rgba(144, 128, 158, 0.62)', nodeFill: 'rgba(144, 128, 158, 0.22)', nodeStroke: '#6e607b' },
-]
-
-const DEFAULT_CLUSTER_STYLE: ClusterStyle = {
-  link: 'rgba(15, 23, 42, 0.28)',
-  nodeFill: 'rgba(148, 163, 184, 0.16)',
-  nodeStroke: '#64748b',
-}
-
 function clusterStyle(clusterId: number | null | undefined): ClusterStyle {
-  if (clusterId === null || clusterId === undefined || !Number.isFinite(clusterId)) {
-    return DEFAULT_CLUSTER_STYLE
+  return {
+    link: getClusterLinkColor(clusterId),
+    nodeFill: getClusterNodeFill(clusterId),
+    nodeStroke: getClusterNodeStroke(clusterId),
   }
-  const index = Math.abs(clusterId) % CLUSTER_PALETTE.length
-  return CLUSTER_PALETTE[index]
 }
 
 function dominantClusterId(leaves: HierarchyLeaf[]): number | null {
@@ -85,11 +77,13 @@ export default function Dendrogram({
   hierarchy,
   selectedClusterId,
   selectedPointId,
+  selectedNodeId,
   onSelectCluster,
   onSelectPoint,
+  onSelectNode,
   onInspectNode,
+  showMergeScale = false,
 }: DendrogramProps) {
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({})
 
@@ -226,6 +220,10 @@ export default function Dendrogram({
     return map
   }, [leafOrder])
 
+  const svgWidth = useMemo(() => {
+    return Math.max(MIN_SVG_WIDTH, leafOrder.length * PER_LEAF_WIDTH)
+  }, [leafOrder.length])
+
   const dominantClusterByNode = useMemo(() => {
     const map = new Map<string, number | null>()
 
@@ -254,7 +252,7 @@ export default function Dendrogram({
 
       const node = nodes[nodeId]
       if (!node) {
-        const fallback = SVG_WIDTH / 2
+        const fallback = svgWidth / 2
         xByNodeId.set(nodeId, fallback)
         return fallback
       }
@@ -263,8 +261,8 @@ export default function Dendrogram({
         const leafIndex = leafIndexByNodeId.get(nodeId) ?? 0
         const x =
           leafCount <= 1
-            ? SVG_WIDTH / 2
-            : SVG_MARGIN + (leafIndex * (SVG_WIDTH - SVG_MARGIN * 2)) / (leafCount - 1)
+            ? svgWidth / 2
+            : SVG_MARGIN + (leafIndex * (svgWidth - SVG_MARGIN * 2)) / (leafCount - 1)
         xByNodeId.set(nodeId, x)
         return x
       }
@@ -357,30 +355,14 @@ export default function Dendrogram({
       yByNodeId,
       maxHeight,
     }
-  }, [leafIndexByNodeId, leafOrder.length, nodes, orderedChildrenByNode, rootId])
+  }, [leafIndexByNodeId, leafOrder.length, nodes, orderedChildrenByNode, rootId, svgWidth])
 
   const heightTicks = useMemo(() => {
-    if (layout.maxHeight <= 0) {
-      return [
-        {
-          y: SVG_HEIGHT - SVG_MARGIN,
-          label: '0',
-        },
-      ]
-    }
-
-    const tickCount = 5
+    const tickCount = layout.maxHeight <= 0 ? 2 : 5
     const plotHeight = SVG_HEIGHT - SVG_MARGIN * 2
     return Array.from({ length: tickCount }, (_, index) => {
       const progress = index / (tickCount - 1)
-      const y = SVG_MARGIN + progress * plotHeight
-      const value = (1 - progress) * layout.maxHeight
-      const label = value >= 10 ? value.toFixed(1) : value.toFixed(2)
-
-      return {
-        y,
-        label,
-      }
+      return SVG_MARGIN + progress * plotHeight
     })
   }, [layout.maxHeight])
 
@@ -447,20 +429,20 @@ export default function Dendrogram({
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
-      setSelectedNodeId(nodeId)
       const leaves = descendantLeavesByNode.get(nodeId) ?? []
       const dominant = dominantClusterId(leaves)
+      onSelectNode?.(nodeId, dominant)
       onSelectCluster(dominant)
     },
-    [descendantLeavesByNode, onSelectCluster]
+    [descendantLeavesByNode, onSelectCluster, onSelectNode]
   )
 
   const handleLeafSelect = useCallback(
     (leaf: HierarchyLeaf) => {
-      setSelectedNodeId(leaf.node_id)
-      onSelectPoint(leaf.id, leaf.cluster_id)
+      onSelectNode?.(leaf.node_id, leaf.cluster_id)
+      onSelectPoint(leaf.id, leaf.cluster_id, leaf.node_id)
     },
-    [onSelectPoint]
+    [onSelectNode, onSelectPoint]
   )
 
   useEffect(() => {
@@ -479,21 +461,22 @@ export default function Dendrogram({
     const descendants = descendantLeavesByNode.get(selectedNodeId) ?? []
     onInspectNode({
       nodeId: selectedNodeId,
-      label: node.label,
+      label: humanThemeLabel(node.label, node.size),
       size: node.size,
       height: node.height,
       dominantClusterId: dominantClusterId(descendants),
       descendantLeafCount: descendants.length,
+      descendantLeafIds: descendants.map((leaf) => leaf.id),
     })
   }, [descendantLeavesByNode, nodes, onInspectNode, selectedNodeId])
 
   useEffect(() => {
     if (!selectedPointId) return
     const selectedLeaf = leafNodeByPointId.get(selectedPointId)
-    if (selectedLeaf) {
-      setSelectedNodeId(selectedLeaf.node_id)
+    if (selectedLeaf && selectedLeaf.node_id !== selectedNodeId) {
+      onSelectNode?.(selectedLeaf.node_id, selectedLeaf.cluster_id)
     }
-  }, [leafNodeByPointId, selectedPointId])
+  }, [leafNodeByPointId, onSelectNode, selectedNodeId, selectedPointId])
 
   return (
     <section className="chat-result-panel chat-hierarchy-panel">
@@ -515,27 +498,25 @@ export default function Dendrogram({
       <div className="chat-dendrogram-wrap">
         <svg
           className="chat-dendrogram-svg"
-          viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+          viewBox={`0 0 ${svgWidth} ${SVG_HEIGHT}`}
+          style={{ minWidth: `${svgWidth}px` }}
           role="img"
           aria-label="Hierarchy dendrogram"
         >
-          {heightTicks.map((tick, index) => (
+          {heightTicks.map((tickY, index) => (
             <g key={`tick-${index}`} className="chat-dendrogram-grid-row">
               <line
                 className="chat-dendrogram-grid-line"
                 x1={SVG_MARGIN}
-                y1={tick.y}
-                x2={SVG_WIDTH - SVG_MARGIN}
-                y2={tick.y}
+                y1={tickY}
+                x2={svgWidth - SVG_MARGIN}
+                y2={tickY}
               />
-              <text
-                className="chat-dendrogram-grid-label"
-                x={SVG_MARGIN - 10}
-                y={tick.y + 4}
-                textAnchor="end"
-              >
-                {tick.label}
-              </text>
+              {showMergeScale && layout.maxHeight > 0 && (
+                <text className="chat-dendrogram-grid-label" x={SVG_MARGIN + 4} y={tickY - 4}>
+                  Merge distance {(layout.maxHeight * (1 - (tickY - SVG_MARGIN) / (SVG_HEIGHT - SVG_MARGIN * 2))).toFixed(2)}
+                </text>
+              )}
             </g>
           ))}
 
@@ -601,9 +582,10 @@ export default function Dendrogram({
               .filter(Boolean)
               .join(' ')
 
-            const labelAnchorRight = x > SVG_WIDTH - SVG_MARGIN - 160
+            const labelAnchorRight = x > svgWidth - SVG_MARGIN - 160
             const labelX = labelAnchorRight ? -10 : 10
             const labelY = isLeaf ? -8 : -10
+            const displayLabel = humanThemeLabel(node.label, node.size)
 
             return (
               <g
@@ -633,13 +615,13 @@ export default function Dendrogram({
                     y={labelY}
                     textAnchor={labelAnchorRight ? 'end' : 'start'}
                   >
-                    {node.label}
+                    {displayLabel}
                   </text>
                 )}
                 <title>
                   {leaf
-                    ? `${node.label} | leaf ${leaf.id} | cluster ${leaf.cluster_id}`
-                    : `${node.label} | size ${node.size} | height ${node.height.toFixed(4)}`}
+                    ? `${displayLabel} | leaf ${leaf.id} | cluster ${leaf.cluster_id}`
+                    : `${displayLabel} | size ${node.size} | merge distance ${node.height.toFixed(4)}`}
                 </title>
               </g>
             )

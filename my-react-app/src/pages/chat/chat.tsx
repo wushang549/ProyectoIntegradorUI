@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import granulateLogo from '../../assets/Granulate logo.png'
@@ -6,24 +7,35 @@ import {
   getAnalysisClusters,
   getAnalysisGranulate,
   getAnalysisHierarchy,
+  getAnalysisInsights,
   getAnalysisMap,
   getAnalysisOverview,
+  getRecentAnalyses,
   wait,
 } from '../../api/analysis.client'
 import type {
   AnalysisGranulateResponse,
   ClustersResponse,
   HierarchyResponse,
+  InsightsResponse,
   MapResponse,
   OverviewResponse,
+  RecentAnalysisResponse,
 } from '../../api/analysis.types'
 import { useAnalysisRun } from '../../hooks/useAnalysisRun'
 import {
   clearAnalysisSelection,
   createInitialAnalysisSelectionState,
   withSelectedCluster,
+  withSelectedNode,
   withSelectedPoint,
 } from '../../state/analysisStore'
+import { humanThemeLabel } from '../../utils/insightsTheme'
+import { ANALYSIS_SECTIONS, type AnalysisSectionId } from './analysisSections'
+import SelectionDetailsDrawer, {
+  type DrawerExampleItem,
+  type SelectedEntityModel,
+} from './components/SelectionDetailsDrawer'
 import ClustersTab from '../../tabs/ClustersTab'
 import GranulateTab from '../../tabs/GranulateTab'
 import HierarchyTab from '../../tabs/HierarchyTab'
@@ -36,9 +48,6 @@ const POLL_INTERVAL_MS = 1500
 const POLL_TIMEOUT_MS = 120000
 const ARTIFACT_TIMEOUT_MS = 120000
 
-const RESULT_TABS = ['Overview', 'Map', 'Clusters', 'Granulate', 'Hierarchy'] as const
-
-type ResultTab = (typeof RESULT_TABS)[number]
 type ViewMode = 'chat' | 'analysis'
 
 export type GranulateGranule = {
@@ -90,6 +99,7 @@ export type AspectAccordionSection = AspectSummary & {
 
 type AnalysisArtifacts = {
   overview: OverviewResponse | null
+  insights: InsightsResponse | null
   map: MapResponse | null
   clusters: ClustersResponse | null
   granulate: AnalysisGranulateResponse | null
@@ -114,12 +124,12 @@ type RunStage = (typeof RUN_STAGES)[number]
 const RUN_STAGE_META: Record<RunStage, { label: string; detail: string; min: number; max: number }> = {
   queued: { label: 'Queued', detail: 'Waiting for workers to start', min: 2, max: 10 },
   embeddings: { label: 'Embeddings', detail: 'Generating vector representations', min: 10, max: 28 },
-  hierarchy: { label: 'Hierarchy', detail: 'Building dendrogram structure', min: 28, max: 44 },
+  hierarchy: { label: 'Hierarchy', detail: 'Building hierarchy tree', min: 28, max: 44 },
   clusters: { label: 'Clusters', detail: 'Grouping related items', min: 44, max: 60 },
   umap: { label: 'Map', detail: 'Projecting points for map view', min: 60, max: 76 },
-  labeling: { label: 'Labeling', detail: 'Writing cluster labels', min: 76, max: 88 },
-  granulate: { label: 'Granulate', detail: 'Producing granules and highlights', min: 88, max: 95 },
-  overview: { label: 'Overview', detail: 'Finalizing summary artifacts', min: 95, max: 99 },
+  labeling: { label: 'Labeling', detail: 'Writing theme labels', min: 76, max: 88 },
+  granulate: { label: 'Granulate', detail: 'Producing sentiment/aspect summary', min: 88, max: 95 },
+  overview: { label: 'Overview', detail: 'Finalizing overview artifacts', min: 95, max: 99 },
   completed: { label: 'Completed', detail: 'Analysis completed', min: 100, max: 100 },
   failed: { label: 'Failed', detail: 'Analysis finished with errors', min: 0, max: 100 },
 }
@@ -132,11 +142,23 @@ function clampProgress(value: number) {
 function createEmptyArtifacts(): AnalysisArtifacts {
   return {
     overview: null,
+    insights: null,
     map: null,
     clusters: null,
     granulate: null,
     hierarchy: null,
   }
+}
+
+function formatPercent(value: number, fallback = '0%') {
+  if (!Number.isFinite(value)) return fallback
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
 }
 
 /* Dots arranged in concentric rings to form a circle */
@@ -208,6 +230,306 @@ async function with409Retry<T>(fn: () => Promise<T>, timeoutMs: number): Promise
 
   throw new Error(`Artifacts are still processing after ${Math.round(timeoutMs / 1000)} seconds.`)
 }
+function buildDescendantLeafIdsByNode(hierarchy: HierarchyResponse | null) {
+  const map = new Map<string, string[]>()
+  if (!hierarchy) return map
+
+  const leavesByNodeId = new Map<string, string[]>()
+  for (const leaf of hierarchy.leaves) {
+    const current = leavesByNodeId.get(leaf.node_id) ?? []
+    current.push(leaf.id)
+    leavesByNodeId.set(leaf.node_id, current)
+  }
+
+  const visit = (nodeId: string): string[] => {
+    const cached = map.get(nodeId)
+    if (cached) return cached
+
+    const node = hierarchy.nodes[nodeId]
+    if (!node) {
+      map.set(nodeId, [])
+      return []
+    }
+
+    if (node.children_ids.length === 0) {
+      const ownLeaves = leavesByNodeId.get(nodeId) ?? []
+      map.set(nodeId, ownLeaves)
+      return ownLeaves
+    }
+
+    const descendantLeaves = node.children_ids.flatMap((childId) => visit(childId))
+    map.set(nodeId, descendantLeaves)
+    return descendantLeaves
+  }
+
+  for (const nodeId of Object.keys(hierarchy.nodes)) {
+    visit(nodeId)
+  }
+
+  return map
+}
+
+function findInsightThemeForCluster(
+  insights: InsightsResponse | null,
+  cluster: { label: string; size: number; top_terms: string[] } | null
+) {
+  if (!insights || !cluster) return null
+
+  const normalizedLabel = cluster.label.trim().toLowerCase()
+  const exact = insights.theme_summary.find((theme) => theme.label.trim().toLowerCase() === normalizedLabel)
+  if (exact) return exact
+
+  const bySize = insights.theme_summary.find((theme) => theme.size === cluster.size)
+  if (bySize) return bySize
+
+  let bestMatch: InsightsResponse['theme_summary'][number] | null = null
+  let bestOverlap = -1
+  const clusterTerms = new Set(cluster.top_terms.map((term) => term.trim().toLowerCase()))
+
+  for (const theme of insights.theme_summary) {
+    let overlap = 0
+    for (const term of theme.top_terms) {
+      if (clusterTerms.has(term.trim().toLowerCase())) {
+        overlap += 1
+      }
+    }
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap
+      bestMatch = theme
+    }
+  }
+
+  return bestMatch
+}
+
+function dedupeExampleItems(items: DrawerExampleItem[]) {
+  const seen = new Set<string>()
+  const deduped: DrawerExampleItem[] = []
+
+  for (const item of items) {
+    const key = item.preview.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    deduped.push(item)
+  }
+
+  return deduped
+}
+
+function buildSelectedEntityModel({
+  selection,
+  artifacts,
+  descendantLeafIdsByNode,
+}: {
+  selection: {
+    selectedClusterId: number | null
+    selectedPointId: string | null
+    selectedNodeId: string | null
+  }
+  artifacts: AnalysisArtifacts
+  descendantLeafIdsByNode: Map<string, string[]>
+}): SelectedEntityModel | null {
+  const clusterSource = artifacts.clusters?.clusters ?? artifacts.map?.clusters ?? []
+  const clusterById = new Map(clusterSource.map((cluster) => [cluster.cluster_id, cluster]))
+  const points = artifacts.map?.points ?? []
+  const pointById = new Map(points.map((point) => [point.id, point]))
+  const totalCalls = artifacts.overview?.counts.items ?? points.length
+
+  if (selection.selectedPointId) {
+    const point = pointById.get(selection.selectedPointId)
+    if (point) {
+      const cluster = clusterById.get(point.cluster_id) ?? null
+      const relatedPoints = points
+        .filter((candidate) => candidate.cluster_id === point.cluster_id && candidate.id !== point.id)
+        .slice(0, 4)
+
+      const exampleItems = dedupeExampleItems(
+        [point, ...relatedPoints].map((item, index) => ({
+          key: `point-${item.id}-${index}`,
+          id: item.id,
+          pointId: item.id,
+          clusterId: item.cluster_id,
+          nodeId: selection.selectedNodeId,
+          preview: item.preview,
+          metadata: item.metadata,
+        }))
+      )
+
+      return {
+        kind: 'item',
+        title: 'Selected call',
+        subtitle: cluster?.label ?? point.cluster_label ?? `Theme ${point.cluster_id}`,
+        summary:
+          'This call is one concrete example of the selected theme. Use actions below to jump to the map position, full theme list, or tree branch.',
+        clusterId: point.cluster_id,
+        pointId: point.id,
+        nodeId: selection.selectedNodeId,
+        topTerms: cluster?.top_terms.slice(0, 8) ?? [],
+        stats: [
+          { label: 'Theme', value: cluster?.label ?? point.cluster_label ?? `Theme ${point.cluster_id}` },
+          { label: 'Map position', value: `${point.x.toFixed(2)}, ${point.y.toFixed(2)}` },
+        ],
+        exampleItems,
+        advancedFields: [
+          { label: 'Raw call ID', value: point.id },
+          { label: 'Cluster ID', value: String(point.cluster_id) },
+          { label: 'Raw X', value: Number.isFinite(point.x_raw) ? point.x_raw.toFixed(4) : '-' },
+          { label: 'Raw Y', value: Number.isFinite(point.y_raw) ? point.y_raw.toFixed(4) : '-' },
+        ],
+        actions: {
+          viewItems: true,
+          showOnMap: true,
+          openTree: true,
+        },
+      }
+    }
+  }
+
+  if (selection.selectedNodeId && artifacts.hierarchy) {
+    const node = artifacts.hierarchy.nodes[selection.selectedNodeId]
+    if (node) {
+      const leafIds = descendantLeafIdsByNode.get(selection.selectedNodeId) ?? []
+      const descendantPoints = leafIds
+        .map((leafId) => pointById.get(leafId))
+        .filter(Boolean) as MapResponse['points']
+
+      let dominantClusterId = node.dominant_cluster_id
+      if (dominantClusterId === null && descendantPoints.length > 0) {
+        const counts = new Map<number, number>()
+        for (const point of descendantPoints) {
+          counts.set(point.cluster_id, (counts.get(point.cluster_id) ?? 0) + 1)
+        }
+        let topCluster: number | null = null
+        let topCount = -1
+        for (const [clusterId, count] of counts.entries()) {
+          if (count > topCount) {
+            topCluster = clusterId
+            topCount = count
+          }
+        }
+        dominantClusterId = topCluster
+      }
+
+      const dominantCluster = dominantClusterId !== null ? clusterById.get(dominantClusterId) ?? null : null
+      const callCount = node.descendant_leaf_count || node.size || descendantPoints.length
+
+      const exampleItems = dedupeExampleItems(
+        descendantPoints.slice(0, 6).map((point, index) => ({
+          key: `node-${point.id}-${index}`,
+          id: point.id,
+          pointId: point.id,
+          clusterId: point.cluster_id,
+          nodeId: selection.selectedNodeId,
+          preview: point.preview,
+          metadata: point.metadata,
+        }))
+      )
+
+      return {
+        kind: 'node',
+        title: humanThemeLabel(node.label, callCount),
+        subtitle: `${callCount} calls in this branch`,
+        summary:
+          node.summary ||
+          'This branch groups closely related calls. Lower branches are more specific and higher branches are broader.',
+        clusterId: dominantClusterId,
+        pointId: selection.selectedPointId,
+        nodeId: selection.selectedNodeId,
+        topTerms: dominantCluster?.top_terms.slice(0, 8) ?? [],
+        stats: [
+          { label: 'Calls in branch', value: String(callCount) },
+          { label: 'Dominant theme', value: dominantCluster ? dominantCluster.label : 'Not available' },
+          { label: 'Dominant share', value: formatPercent(node.dominant_cluster_share, '-') },
+        ],
+        exampleItems,
+        advancedFields: [
+          { label: 'Node ID', value: node.node_id },
+          { label: 'Merge distance', value: Number.isFinite(node.height) ? node.height.toFixed(4) : '-' },
+          { label: 'Cohesion', value: Number.isFinite(node.cohesion) ? node.cohesion.toFixed(3) : '-' },
+          { label: 'Similarity', value: Number.isFinite(node.similarity) ? node.similarity.toFixed(3) : '-' },
+        ],
+        actions: {
+          viewItems: dominantClusterId !== null,
+          showOnMap: descendantPoints.length > 0,
+          openTree: true,
+        },
+      }
+    }
+  }
+
+  if (selection.selectedClusterId !== null) {
+    const clusterId = selection.selectedClusterId
+    const cluster =
+      clusterById.get(clusterId) ?? {
+        cluster_id: clusterId,
+        label: `Theme ${clusterId}`,
+        size: points.filter((point) => point.cluster_id === clusterId).length,
+        top_terms: [] as string[],
+        representatives: [] as ClustersResponse['clusters'][number]['representatives'],
+      }
+    const insightTheme = findInsightThemeForCluster(artifacts.insights, cluster)
+
+    const representativeExamples: DrawerExampleItem[] = cluster.representatives.map((rep, index) => ({
+      key: `cluster-rep-${rep.id}-${index}`,
+      id: rep.id,
+      pointId: rep.id,
+      clusterId,
+      preview: rep.preview,
+      metadata: rep.metadata,
+    }))
+
+    const insightExamples: DrawerExampleItem[] = (insightTheme?.examples ?? []).map((example, index) => ({
+      key: `cluster-insight-${clusterId}-${index}`,
+      clusterId,
+      preview: example,
+    }))
+
+    const mapExamples: DrawerExampleItem[] = points
+      .filter((point) => point.cluster_id === clusterId)
+      .slice(0, 6)
+      .map((point, index) => ({
+        key: `cluster-map-${point.id}-${index}`,
+        id: point.id,
+        pointId: point.id,
+        clusterId: point.cluster_id,
+        preview: point.preview,
+        metadata: point.metadata,
+      }))
+
+    const exampleItems = dedupeExampleItems([...representativeExamples, ...insightExamples, ...mapExamples]).slice(
+      0,
+      7
+    )
+    const share = totalCalls > 0 ? `${Math.round((cluster.size / totalCalls) * 100)}% of calls` : '-'
+
+    return {
+      kind: 'cluster',
+      title: cluster.label,
+      subtitle: `${cluster.size} calls`,
+      summary:
+        'This is one of the main themes in the dataset. Review examples first, then use actions to inspect where these calls sit on the map or tree.',
+      clusterId,
+      pointId: selection.selectedPointId,
+      nodeId: selection.selectedNodeId,
+      topTerms:
+        cluster.top_terms.length > 0 ? cluster.top_terms.slice(0, 8) : insightTheme?.top_terms.slice(0, 8) ?? [],
+      stats: [
+        { label: 'Theme size', value: String(cluster.size) },
+        { label: 'Share of dataset', value: share },
+        { label: 'Cluster ID', value: String(clusterId) },
+      ],
+      exampleItems,
+      advancedFields: [{ label: 'Cluster ID', value: String(clusterId) }],
+      actions: {
+        viewItems: true,
+        showOnMap: true,
+        openTree: true,
+      },
+    }
+  }
+
+  return null
+}
 
 export default function Chat() {
   const [query, setQuery] = useState('')
@@ -217,14 +539,18 @@ export default function Chat() {
   const [fileError, setFileError] = useState('')
   const [requestError, setRequestError] = useState('')
   const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(false)
+  const [isLoadingRecent, setIsLoadingRecent] = useState(false)
   const [isLoadingGranulateItems, setIsLoadingGranulateItems] = useState(false)
   const [displayProgress, setDisplayProgress] = useState(0)
   const [stageStartedAt, setStageStartedAt] = useState(() => Date.now())
   const [progressTicker, setProgressTicker] = useState(0)
 
+  const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null)
+  const [recentAnalyses, setRecentAnalyses] = useState<RecentAnalysisResponse[]>([])
   const [artifacts, setArtifacts] = useState<AnalysisArtifacts>(createEmptyArtifacts)
-  const [activeTab, setActiveTab] = useState<ResultTab>('Overview')
+  const [activeSection, setActiveSection] = useState<AnalysisSectionId>('overview')
   const [selection, setSelection] = useState(createInitialAnalysisSelectionState)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   const { analysisId, status, isRunning, error: runError, startAnalysis, resetRun } = useAnalysisRun({
     intervalMs: POLL_INTERVAL_MS,
@@ -313,13 +639,36 @@ export default function Chat() {
     autoResize(queryInputRef.current)
   }, [autoResize, query])
 
+  useEffect(() => {
+    if (analysisId) {
+      setCurrentAnalysisId(analysisId)
+    }
+  }, [analysisId])
+
+  const loadRecentAnalyses = useCallback(async () => {
+    setIsLoadingRecent(true)
+    try {
+      const recent = await getRecentAnalyses(8)
+      setRecentAnalyses(recent)
+    } catch {
+      setRecentAnalyses([])
+    } finally {
+      setIsLoadingRecent(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadRecentAnalyses()
+  }, [loadRecentAnalyses])
+
   const loadArtifacts = useCallback(async (nextAnalysisId: string) => {
     setIsLoadingArtifacts(true)
     setRequestError('')
 
     try {
-      const [overview, map, clusters, granulate, hierarchy] = await Promise.all([
+      const [overview, insights, map, clusters, granulate, hierarchy] = await Promise.all([
         with409Retry(() => getAnalysisOverview(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
+        with409Retry(() => getAnalysisInsights(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisMap(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisClusters(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisGranulate(nextAnalysisId, false), ARTIFACT_TIMEOUT_MS),
@@ -328,15 +677,35 @@ export default function Chat() {
 
       setArtifacts({
         overview,
+        insights,
         map,
         clusters,
         granulate,
         hierarchy,
       })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load analysis artifacts.'
+      setRequestError(message)
+      throw err
     } finally {
       setIsLoadingArtifacts(false)
     }
   }, [])
+
+  const openRecentAnalysis = useCallback(
+    async (analysisIdToOpen: string) => {
+      if (!analysisIdToOpen) return
+      resetRun()
+      setRequestError('')
+      setSelection(createInitialAnalysisSelectionState())
+      setActiveSection('overview')
+      setIsDrawerOpen(false)
+      setCurrentAnalysisId(analysisIdToOpen)
+      setViewMode('analysis')
+      await loadArtifacts(analysisIdToOpen)
+    },
+    [loadArtifacts, resetRun]
+  )
 
   const runProjectFlow = useCallback(async () => {
     if (isRunning || isLoadingArtifacts) return
@@ -354,7 +723,8 @@ export default function Chat() {
 
     setArtifacts(createEmptyArtifacts())
     setSelection(createInitialAnalysisSelectionState())
-    setActiveTab('Overview')
+    setActiveSection('overview')
+    setIsDrawerOpen(false)
     setViewMode('chat')
     resetRun()
     setDisplayProgress(0)
@@ -372,23 +742,34 @@ export default function Chat() {
         },
       })
 
+      setCurrentAnalysisId(nextAnalysisId)
       setViewMode('analysis')
       await loadArtifacts(nextAnalysisId)
+      await loadRecentAnalyses()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Request failed'
       setRequestError(message)
     }
-  }, [attachedFiles, isLoadingArtifacts, isRunning, loadArtifacts, query, resetRun, startAnalysis])
+  }, [
+    attachedFiles,
+    isLoadingArtifacts,
+    isRunning,
+    loadArtifacts,
+    loadRecentAnalyses,
+    query,
+    resetRun,
+    startAnalysis,
+  ])
 
   const loadGranulateItems = useCallback(async () => {
-    if (!analysisId) return
+    if (!currentAnalysisId) return
 
     setIsLoadingGranulateItems(true)
     setRequestError('')
 
     try {
       const granulate = await with409Retry(
-        () => getAnalysisGranulate(analysisId, true),
+        () => getAnalysisGranulate(currentAnalysisId, true),
         ARTIFACT_TIMEOUT_MS
       )
       setArtifacts((prev) => ({
@@ -401,34 +782,61 @@ export default function Chat() {
     } finally {
       setIsLoadingGranulateItems(false)
     }
-  }, [analysisId])
+  }, [currentAnalysisId])
 
   const retryCurrentAnalysis = useCallback(() => {
-    if (!analysisId) return
-    void loadArtifacts(analysisId).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : 'Failed to reload artifacts.'
-      setRequestError(message)
-    })
-  }, [analysisId, loadArtifacts])
+    if (!currentAnalysisId) return
+    void loadArtifacts(currentAnalysisId).catch(() => undefined)
+  }, [currentAnalysisId, loadArtifacts])
 
   const hasAnalysisData = useMemo(() => {
-    return analysisId !== null || Object.values(artifacts).some(Boolean)
-  }, [analysisId, artifacts])
+    return currentAnalysisId !== null || Object.values(artifacts).some(Boolean)
+  }, [artifacts, currentAnalysisId])
 
   const selectedClusterId = selection.selectedClusterId
   const selectedPointId = selection.selectedPointId
+  const selectedNodeId = selection.selectedNodeId
 
   const selectCluster = useCallback((clusterId: number | null) => {
     setSelection((prev) => withSelectedCluster(prev, clusterId))
   }, [])
 
-  const selectPoint = useCallback((pointId: string | null, clusterId?: number | null) => {
-    setSelection((prev) => withSelectedPoint(prev, pointId, clusterId))
+  const selectPoint = useCallback(
+    (pointId: string | null, clusterId?: number | null, nodeId?: string | null) => {
+      setSelection((prev) => withSelectedPoint(prev, pointId, clusterId, nodeId))
+    },
+    []
+  )
+
+  const selectNode = useCallback((nodeId: string | null, clusterId?: number | null) => {
+    setSelection((prev) => withSelectedNode(prev, nodeId, clusterId))
   }, [])
 
   const clearFilters = useCallback(() => {
     setSelection((prev) => clearAnalysisSelection(prev))
+    setIsDrawerOpen(false)
   }, [])
+
+  const descendantLeafIdsByNode = useMemo(
+    () => buildDescendantLeafIdsByNode(artifacts.hierarchy),
+    [artifacts.hierarchy]
+  )
+
+  const selectedEntity = useMemo(
+    () =>
+      buildSelectedEntityModel({
+        selection,
+        artifacts,
+        descendantLeafIdsByNode,
+      }),
+    [artifacts, descendantLeafIdsByNode, selection]
+  )
+
+  useEffect(() => {
+    if (selectedEntity) {
+      setIsDrawerOpen(true)
+    }
+  }, [selectedEntity])
 
   const runStatus = useMemo(() => {
     const stage = status?.progress.stage as RunStage | undefined
@@ -440,7 +848,6 @@ export default function Chat() {
           title: 'Preparing results',
           detail: 'Loading analysis artifacts',
           targetProgress: 99,
-          backendPct,
           stepText: 'Finalizing',
           indeterminate: true,
         }
@@ -452,7 +859,6 @@ export default function Chat() {
           title: 'Starting analysis',
           detail: 'Waiting for first progress update',
           targetProgress: bootstrap,
-          backendPct: 0,
           stepText: 'Initializing',
           indeterminate: true,
         }
@@ -462,7 +868,6 @@ export default function Chat() {
         title: '',
         detail: '',
         targetProgress: 0,
-        backendPct: 0,
         stepText: '',
         indeterminate: false,
       }
@@ -478,8 +883,6 @@ export default function Chat() {
 
     if (stage === 'completed') {
       targetProgress = 100
-    } else if (stage === 'failed') {
-      targetProgress = boundedBackend
     } else if (isLoadingArtifacts && !isRunning) {
       targetProgress = Math.max(targetProgress, 99)
     }
@@ -492,7 +895,6 @@ export default function Chat() {
       title: meta.label,
       detail: meta.detail,
       targetProgress,
-      backendPct,
       stepText,
       indeterminate: false,
     }
@@ -513,7 +915,7 @@ export default function Chat() {
   }, [isLoadingArtifacts, isRunning])
 
   useEffect(() => {
-    if (!isRunning && !isLoadingArtifacts && !analysisId && !status) {
+    if (!isRunning && !isLoadingArtifacts && !status) {
       setDisplayProgress(0)
       return
     }
@@ -530,55 +932,20 @@ export default function Chat() {
     }, 32)
 
     return () => window.clearInterval(timer)
-  }, [analysisId, isLoadingArtifacts, isRunning, runStatus.targetProgress, status])
+  }, [isLoadingArtifacts, isRunning, runStatus.targetProgress, status])
 
   const activeError = requestError || runError
+  const isDrawerVisible = viewMode === 'analysis' && Boolean(selectedEntity)
 
   return (
     <div className="chat-page">
-      <aside className="chat-sidebar">
-        <Link to="/" className="chat-sidebar-logo" aria-label="Granulate home">
-          <img src={granulateLogo} alt="Granulate" className="chat-logo-img" />
-        </Link>
-        <nav className="chat-sidebar-nav">
-          <Link to="/" className="chat-nav-item" title="Home">
-            <ChatIconHome />
-          </Link>
-          <Link to="/chat" className="chat-nav-item chat-nav-item--active" title="Chat">
-            <ChatIconBubble />
-          </Link>
-          <span className="chat-nav-item" title="History">
-            <ChatIconClock />
-          </span>
-          <span className="chat-nav-item" title="Files">
-            <ChatIconFolder />
-          </span>
-          <span className="chat-nav-item" title="Share">
-            <ChatIconShare />
-          </span>
-          <span className="chat-nav-item" title="Data sources">
-            <ChatIconDatabase />
-          </span>
-          <span className="chat-nav-item" title="Support">
-            <ChatIconSupport />
-          </span>
-          <span className="chat-nav-item" title="Settings">
-            <ChatIconSettings />
-          </span>
-        </nav>
-        <div className="chat-sidebar-user">
-          <div className="chat-user-avatar" aria-hidden />
-        </div>
-      </aside>
-
       <div className="chat-main">
         <header className="chat-header">
-          <div className="chat-header-left">
-            <span className="chat-header-title">Granulate Chat</span>
-          </div>
-        </header>
+          <Link to="/" className="chat-brand" aria-label="Granulate home">
+            <img src={granulateLogo} alt="Granulate" className="chat-logo-img" />
+            <span className="chat-header-title">Granulate Analysis</span>
+          </Link>
 
-        <main className="chat-content">
           {hasAnalysisData && (
             <div className="chat-view-segmented" role="tablist" aria-label="View mode">
               <button
@@ -601,7 +968,9 @@ export default function Chat() {
               </button>
             </div>
           )}
+        </header>
 
+        <main className="chat-content">
           {(!hasAnalysisData || viewMode === 'chat') && (
             <>
               <div className="chat-greeting-wrap">
@@ -613,9 +982,7 @@ export default function Chat() {
                   onMouseLeave={handleOrbMouseLeave}
                 >
                   {ORB_DOT_POSITIONS.map((pos, i) => {
-                    const repulse = mouseInOrb
-                      ? getRepulsion(pos.x, pos.y, mouseInOrb.x, mouseInOrb.y)
-                      : { x: 0, y: 0 }
+                    const repulse = mouseInOrb ? getRepulsion(pos.x, pos.y, mouseInOrb.x, mouseInOrb.y) : { x: 0, y: 0 }
                     return (
                       <span
                         key={i}
@@ -635,11 +1002,11 @@ export default function Chat() {
                   {getGreeting()}, <span className="chat-greeting-name">there</span>
                 </p>
                 <h2 className="chat-headline">
-                  What are we going to <em className="chat-headline-accent">analyze</em> today?
+                  Analyze your data in <em className="chat-headline-accent">one place</em>
                 </h2>
               </div>
 
-              <div
+              <section
                 className={`chat-input-wrap ${isDragging ? 'chat-input-wrap--dragging' : ''}`}
                 onDrop={onDrop}
                 onDragOver={onDragOver}
@@ -713,15 +1080,14 @@ export default function Chat() {
                     </div>
                     <p className="chat-run-status-detail">
                       {runStatus.stepText}
-                      {runStatus.detail ? ` · ${runStatus.detail}` : ''}
-                      {!runStatus.indeterminate ? ` · backend ${runStatus.backendPct}%` : ''}
+                      {runStatus.detail ? ` | ${runStatus.detail}` : ''}
                     </p>
                   </div>
                 )}
 
                 {!isRunning && !isLoadingArtifacts && hasAnalysisData && (
                   <p className="chat-run-status" role="status">
-                    Analysis ready. Switch to <strong>Analysis</strong> to explore results.
+                    Analysis ready. Open <strong>Analysis</strong> to explore themes, map, aspects, and tree.
                   </p>
                 )}
 
@@ -754,258 +1120,193 @@ export default function Chat() {
                     {activeError}
                   </p>
                 )}
-              </div>
+              </section>
+
+              <section className="chat-recent-panel">
+                <div className="chat-recent-head">
+                  <h3 className="chat-card-title">Recent analyses</h3>
+                  <button
+                    type="button"
+                    className="chat-plain-btn"
+                    onClick={() => void loadRecentAnalyses()}
+                    disabled={isLoadingRecent}
+                  >
+                    {isLoadingRecent ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
+
+                {recentAnalyses.length === 0 && (
+                  <p className="chat-muted-text">
+                    {isLoadingRecent ? 'Loading recent analyses...' : 'No recent analyses available yet.'}
+                  </p>
+                )}
+
+                <div className="chat-recent-list">
+                  {recentAnalyses.map((item) => (
+                    <button
+                      key={item.analysis_id}
+                      type="button"
+                      className="chat-recent-item"
+                      onClick={() => {
+                        void openRecentAnalysis(item.analysis_id).catch(() => undefined)
+                      }}
+                    >
+                      <span className="chat-recent-id">{item.analysis_id}</span>
+                      <span className="chat-recent-meta">
+                        {formatDateTime(item.created_at)} | {item.item_count} items
+                      </span>
+                      <span className={`chat-recent-status chat-recent-status--${item.status}`}>{item.status}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
             </>
           )}
 
           {hasAnalysisData && viewMode === 'analysis' && (
-            <section className="chat-results-wrap">
-              <div className="chat-tabs" role="tablist" aria-label="Results Explorer Tabs">
-                {RESULT_TABS.map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    role="tab"
-                    className={`chat-toolbar-btn ${activeTab === tab ? 'chat-toolbar-btn--active' : ''}`}
-                    onClick={() => setActiveTab(tab)}
-                    aria-selected={activeTab === tab}
-                  >
-                    {tab}
-                  </button>
-                ))}
-                <button type="button" className="chat-plain-btn" onClick={clearFilters}>
-                  Clear filters
-                </button>
+            <section className="chat-analysis-layout">
+              <div className="chat-analysis-main">
+                <div className="chat-analysis-nav">
+                  <div className="chat-analysis-nav-list" role="tablist" aria-label="Analysis sections">
+                    {ANALYSIS_SECTIONS.map((section) => (
+                      <button
+                        key={section.id}
+                        type="button"
+                        role="tab"
+                        className={`chat-analysis-nav-item ${
+                          activeSection === section.id ? 'chat-analysis-nav-item--active' : ''
+                        }`}
+                        onClick={() => setActiveSection(section.id)}
+                        aria-selected={activeSection === section.id}
+                      >
+                        {section.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="chat-analysis-nav-actions">
+                    <button type="button" className="chat-plain-btn" onClick={clearFilters}>
+                      Clear selection
+                    </button>
+                    {selectedEntity && (
+                      <button type="button" className="chat-plain-btn" onClick={() => setIsDrawerOpen((prev) => !prev)}>
+                        {isDrawerOpen ? 'Hide details' : 'Show details'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {activeSection === 'overview' && (
+                  <OverviewTab
+                    overview={artifacts.overview}
+                    insights={artifacts.insights}
+                    selectedClusterId={selectedClusterId}
+                    isLoading={isRunning || isLoadingArtifacts}
+                    error={activeError}
+                    onRetry={retryCurrentAnalysis}
+                    onSelectCluster={(clusterId) => {
+                      selectCluster(clusterId)
+                      setActiveSection('themes')
+                    }}
+                  />
+                )}
+
+                {activeSection === 'themes' && (
+                  <ClustersTab
+                    data={artifacts.clusters}
+                    mapData={artifacts.map}
+                    selectedClusterId={selectedClusterId}
+                    selectedPointId={selectedPointId}
+                    onSelectCluster={selectCluster}
+                    onSelectPoint={selectPoint}
+                    isLoading={isRunning || isLoadingArtifacts}
+                    error={activeError}
+                    onRetry={retryCurrentAnalysis}
+                  />
+                )}
+
+                {activeSection === 'map' && (
+                  <MapTab
+                    data={artifacts.map}
+                    selectedClusterId={selectedClusterId}
+                    selectedPointId={selectedPointId}
+                    onSelectCluster={selectCluster}
+                    onSelectPoint={selectPoint}
+                    isLoading={isRunning || isLoadingArtifacts}
+                    error={activeError}
+                    onRetry={retryCurrentAnalysis}
+                  />
+                )}
+
+                {activeSection === 'sentiment' && (
+                  <GranulateTab
+                    data={artifacts.granulate}
+                    mapData={artifacts.map}
+                    selectedClusterId={selectedClusterId}
+                    selectedPointId={selectedPointId}
+                    onSelectPoint={selectPoint}
+                    isLoading={isRunning || isLoadingArtifacts}
+                    error={activeError}
+                    isLoadingItems={isLoadingGranulateItems}
+                    onRetry={retryCurrentAnalysis}
+                    onLoadItems={loadGranulateItems}
+                  />
+                )}
+
+                {activeSection === 'tree' && (
+                  <HierarchyTab
+                    data={artifacts.hierarchy}
+                    mapData={artifacts.map}
+                    selectedClusterId={selectedClusterId}
+                    selectedPointId={selectedPointId}
+                    selectedNodeId={selectedNodeId}
+                    onSelectCluster={selectCluster}
+                    onSelectPoint={selectPoint}
+                    onSelectNode={selectNode}
+                    onOpenNodeItems={(clusterId) => {
+                      selectCluster(clusterId)
+                      setActiveSection('themes')
+                    }}
+                    onClearFilters={clearFilters}
+                    isLoading={isRunning || isLoadingArtifacts}
+                    error={activeError}
+                    onRetry={retryCurrentAnalysis}
+                  />
+                )}
               </div>
-
-              {activeTab === 'Overview' && (
-                <OverviewTab
-                  data={artifacts.overview}
-                  isLoading={isRunning || isLoadingArtifacts}
-                  error={activeError}
-                  onRetry={retryCurrentAnalysis}
-                  onSelectCluster={(clusterId) => {
-                    selectCluster(clusterId)
-                    setActiveTab('Map')
-                  }}
-                />
-              )}
-
-              {activeTab === 'Map' && (
-                <MapTab
-                  data={artifacts.map}
-                  selectedClusterId={selectedClusterId}
-                  selectedPointId={selectedPointId}
-                  onSelectCluster={selectCluster}
-                  onSelectPoint={selectPoint}
-                  isLoading={isRunning || isLoadingArtifacts}
-                  error={activeError}
-                  onRetry={retryCurrentAnalysis}
-                />
-              )}
-
-              {activeTab === 'Clusters' && (
-                <ClustersTab
-                  data={artifacts.clusters}
-                  selectedClusterId={selectedClusterId}
-                  onSelectCluster={selectCluster}
-                  onFocusRepresentative={(pointId, clusterId) => {
-                    selectPoint(pointId, clusterId)
-                    setActiveTab('Map')
-                  }}
-                  isLoading={isRunning || isLoadingArtifacts}
-                  error={activeError}
-                  onRetry={retryCurrentAnalysis}
-                />
-              )}
-
-              {activeTab === 'Granulate' && (
-                <GranulateTab
-                  data={artifacts.granulate}
-                  isLoading={isRunning || isLoadingArtifacts}
-                  error={activeError}
-                  isLoadingItems={isLoadingGranulateItems}
-                  onRetry={retryCurrentAnalysis}
-                  onLoadItems={loadGranulateItems}
-                />
-              )}
-
-              {activeTab === 'Hierarchy' && (
-                <HierarchyTab
-                  data={artifacts.hierarchy}
-                  selectedClusterId={selectedClusterId}
-                  selectedPointId={selectedPointId}
-                  onSelectCluster={selectCluster}
-                  onSelectPoint={(pointId, clusterId) => {
-                    selectPoint(pointId, clusterId)
-                    setActiveTab('Map')
-                  }}
-                  onClearFilters={clearFilters}
-                  isLoading={isRunning || isLoadingArtifacts}
-                  error={activeError}
-                  onRetry={retryCurrentAnalysis}
-                />
-              )}
             </section>
           )}
         </main>
       </div>
+
+      {isDrawerVisible && (
+        <>
+          <div
+            className={`chat-drawer-backdrop ${isDrawerOpen ? 'chat-drawer-backdrop--open' : ''}`}
+            onClick={() => setIsDrawerOpen(false)}
+            aria-hidden
+          />
+          <SelectionDetailsDrawer
+            isOpen={isDrawerOpen}
+            entity={selectedEntity}
+            onClose={() => setIsDrawerOpen(false)}
+            onClearSelection={clearFilters}
+            onOpenSection={(sectionId) => setActiveSection(sectionId)}
+            onSelectCluster={selectCluster}
+            onSelectPoint={selectPoint}
+            onSelectNode={selectNode}
+          />
+        </>
+      )}
     </div>
-  )
-}
-
-function ChatIconHome() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <polyline points="9 22 9 12 15 12 15 22" />
-    </svg>
-  )
-}
-
-function ChatIconBubble() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  )
-}
-
-function ChatIconClock() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-  )
-}
-
-function ChatIconFolder() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-  )
-}
-
-function ChatIconShare() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-    </svg>
-  )
-}
-
-function ChatIconDatabase() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <ellipse cx="12" cy="5" rx="9" ry="3" />
-      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-    </svg>
-  )
-}
-
-function ChatIconSupport() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M9.09 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  )
-}
-
-function ChatIconSettings() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
   )
 }
 
 function ChatIconSpark() {
   return (
     <svg
-      width="20"
-      height="20"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -1013,8 +1314,9 @@ function ChatIconSpark() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M12 3l1.9 3.9L18 9l-4.1 2.1L12 15l-1.9-3.9L6 9l4.1-2.1L12 3z" />
-      <path d="M5 19l.95 1.95L8 22l-2.05 1.05L5 25l-.95-1.95L2 22l2.05-1.05L5 19z" />
+      <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z" />
+      <path d="M5 14l1 2.3L8.3 17 6 18l-1 2.3L4 18l-2.3-1L4 16.3 5 14z" />
+      <path d="M19 14l1 2.3 2.3.7-2.3 1-1 2.3-1-2.3-2.3-1 2.3-.7 1-2.3z" />
     </svg>
   )
 }
@@ -1031,7 +1333,7 @@ function ChatIconAttach() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M21.44 11.05l-8.49 8.49a5.5 5.5 0 0 1-7.78-7.78l8.49-8.49a3.5 3.5 0 1 1 4.95 4.95l-8.49 8.49a1.5 1.5 0 0 1-2.12-2.12l7.07-7.07" />
+      <path d="M21.44 11.05l-8.49 8.49a6 6 0 01-8.49-8.49l8.49-8.49a4 4 0 015.66 5.66l-8.5 8.48a2 2 0 01-2.82-2.82l7.78-7.78" />
     </svg>
   )
 }

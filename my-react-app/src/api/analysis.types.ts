@@ -30,8 +30,16 @@ export interface CreateAnalysisResponse {
     clusters: string
     granulate: string
     hierarchy: string
+    insights: string
     status: string
   }
+}
+
+export interface RecentAnalysisResponse {
+  analysis_id: AnalysisId
+  status: AnalysisState
+  created_at: string
+  item_count: number
 }
 
 export interface AnalysisStatusResponse {
@@ -54,6 +62,12 @@ export interface AnalysisStatusResponse {
   error: string | null
 }
 
+export interface AnalysisRepresentative {
+  id: string
+  preview: string
+  metadata?: Record<string, string | number | boolean | null>
+}
+
 export interface OverviewResponse {
   counts: {
     items: number
@@ -65,27 +79,48 @@ export interface OverviewResponse {
     label: string
     size: number
     top_terms: string[]
-    representatives: Array<{ id: string; preview: string }>
+    representatives: AnalysisRepresentative[]
   }>
   top_aspects: Array<{ aspect: string; count: number }>
   timing: Record<string, number>
 }
 
-export interface MapResponse {
-  points: Array<{
-    id: string
-    x: number
-    y: number
-    cluster_id: number
-    preview: string
+export interface InsightsResponse {
+  key_findings: string[]
+  theme_summary: Array<{
+    label: string
+    size: number
+    top_terms: string[]
+    examples: string[]
   }>
+  quality_warnings: string[]
+}
+
+export interface MapPoint {
+  id: string
+  x: number
+  y: number
+  x_raw: number
+  y_raw: number
+  cluster_id: number
+  cluster_label: string
+  preview: string
+  metadata?: Record<string, string | number | boolean | null>
+}
+
+export interface MapResponse {
+  points: MapPoint[]
   clusters: Array<{
     cluster_id: number
     label: string
     size: number
     top_terms: string[]
-    representatives: Array<{ id: string; preview: string }>
+    representatives: AnalysisRepresentative[]
   }>
+  advanced: {
+    umap_scaled: boolean
+    scale_clamp: number
+  }
 }
 
 export interface ClustersResponse {
@@ -94,7 +129,7 @@ export interface ClustersResponse {
     label: string
     size: number
     top_terms: string[]
-    representatives: Array<{ id: string; preview: string }>
+    representatives: AnalysisRepresentative[]
   }>
 }
 
@@ -147,14 +182,24 @@ export interface GranulateSingleTextResponse {
   }>
 }
 
+export interface GranulateClusterAggregate {
+  cluster_id: number
+  cluster_label: string
+  items_included: number
+  items_total: number
+  aggregate_aspect_summary: Array<{ aspect: string; count: number }>
+}
+
 export interface AnalysisGranulateResponse {
   mode: 'text' | 'csv'
   aggregate_aspect_summary: Array<{ aspect: string; count: number }>
+  per_cluster_aggregate: GranulateClusterAggregate[]
   items_included: number
   items_total: number
   items: Array<{
     id: string
     preview: string
+    metadata?: Record<string, string | number | boolean | null>
     result: GranulateSingleTextResponse
   }>
 }
@@ -166,6 +211,12 @@ export interface HierarchyNode {
   size: number
   height: number
   label: string
+  cohesion: number
+  similarity: number
+  descendant_leaf_count: number
+  dominant_cluster_id: number | null
+  dominant_cluster_share: number
+  summary: string
 }
 
 export interface HierarchyResponse {
