@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { AnalysisGranulateResponse } from '../api/analysis.types'
 import ApiState from '../components/common/ApiState'
+import ExpandableText from '../components/common/ExpandableText'
 
 type GranulateTabProps = {
   data: AnalysisGranulateResponse | null
@@ -20,6 +21,14 @@ export default function GranulateTab({
   onLoadItems,
 }: GranulateTabProps) {
   const [selectedAspect, setSelectedAspect] = useState<string | null>(null)
+  const [expandedItemPreviewIds, setExpandedItemPreviewIds] = useState<Record<string, boolean>>({})
+
+  const toggleItemPreview = useCallback((itemId: string) => {
+    setExpandedItemPreviewIds((prev) => ({
+      ...prev,
+      [itemId]: !prev[itemId],
+    }))
+  }, [])
 
   const sortedAspects = useMemo(() => {
     if (!data) return []
@@ -103,9 +112,15 @@ export default function GranulateTab({
               )}
               {filteredItems.slice(0, 120).map((item) => (
                 <article key={item.id} className="chat-granulate-item-card">
-                  <p className="chat-muted-text">
-                    <strong>{item.id}</strong> - <span className="chat-ellipsis-text">{item.preview}</span>
-                  </p>
+                  <div className="chat-granulate-item-header">
+                    <strong>{item.id}</strong>
+                    <ExpandableText
+                      text={item.preview}
+                      expanded={Boolean(expandedItemPreviewIds[item.id])}
+                      onToggle={() => toggleItemPreview(item.id)}
+                      className="chat-granulate-preview"
+                    />
+                  </div>
                   <div className="chat-chip-row">
                     {Object.entries(item.result.aspect_summary)
                       .sort((a, b) => b[1].count - a[1].count)

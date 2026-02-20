@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type KeyboardEvent } from 'react'
 import type { ClustersResponse } from '../api/analysis.types'
 import ApiState from '../components/common/ApiState'
+import ExpandableText from '../components/common/ExpandableText'
 
 type ClustersTabProps = {
   data: ClustersResponse | null
@@ -22,6 +23,30 @@ export default function ClustersTab({
   onRetry,
 }: ClustersTabProps) {
   const [search, setSearch] = useState('')
+  const [expandedRepresentativeIds, setExpandedRepresentativeIds] = useState<Record<string, boolean>>({})
+
+  const toggleRepresentativePreview = useCallback((itemKey: string) => {
+    setExpandedRepresentativeIds((prev) => ({
+      ...prev,
+      [itemKey]: !prev[itemKey],
+    }))
+  }, [])
+
+  const focusRepresentative = useCallback(
+    (pointId: string, clusterId: number) => {
+      onFocusRepresentative(pointId, clusterId)
+    },
+    [onFocusRepresentative]
+  )
+
+  const handleRepresentativeKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>, pointId: string, clusterId: number) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      focusRepresentative(pointId, clusterId)
+    },
+    [focusRepresentative]
+  )
 
   const visibleClusters = useMemo(() => {
     if (!data) return []
@@ -88,17 +113,31 @@ export default function ClustersTab({
                   </div>
 
                   <div className="chat-list-grid">
-                    {cluster.representatives.slice(0, 5).map((rep) => (
-                      <button
-                        key={rep.id}
-                        type="button"
-                        className="chat-list-item chat-list-item--small"
-                        onClick={() => onFocusRepresentative(rep.id, cluster.cluster_id)}
-                      >
-                        <span>{rep.id}</span>
-                        <span className="chat-ellipsis-text">{rep.preview}</span>
-                      </button>
-                    ))}
+                    {cluster.representatives.slice(0, 5).map((rep) => {
+                      const itemKey = `${cluster.cluster_id}:${rep.id}`
+                      const isPreviewExpanded = Boolean(expandedRepresentativeIds[itemKey])
+
+                      return (
+                        <div
+                          key={rep.id}
+                          className="chat-list-item chat-list-item--small chat-list-item--clickable"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => focusRepresentative(rep.id, cluster.cluster_id)}
+                          onKeyDown={(event) =>
+                            handleRepresentativeKeyDown(event, rep.id, cluster.cluster_id)
+                          }
+                        >
+                          <span>{rep.id}</span>
+                          <ExpandableText
+                            text={rep.preview}
+                            expanded={isPreviewExpanded}
+                            onToggle={() => toggleRepresentativePreview(itemKey)}
+                            className="chat-representative-preview"
+                          />
+                        </div>
+                      )
+                    })}
                   </div>
                 </article>
               )

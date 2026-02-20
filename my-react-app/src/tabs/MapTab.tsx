@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type KeyboardEvent } from 'react'
 import type { MapResponse } from '../api/analysis.types'
 import ApiState from '../components/common/ApiState'
+import ExpandableText from '../components/common/ExpandableText'
 
 type MapTabProps = {
   data: MapResponse | null
@@ -29,6 +30,30 @@ export default function MapTab({
   onRetry,
 }: MapTabProps) {
   const [search, setSearch] = useState('')
+  const [expandedPointIds, setExpandedPointIds] = useState<Record<string, boolean>>({})
+
+  const togglePointPreview = useCallback((pointId: string) => {
+    setExpandedPointIds((prev) => ({
+      ...prev,
+      [pointId]: !prev[pointId],
+    }))
+  }, [])
+
+  const activatePoint = useCallback(
+    (pointId: string, clusterId: number) => {
+      onSelectPoint(pointId, clusterId)
+    },
+    [onSelectPoint]
+  )
+
+  const handleRowKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>, pointId: string, clusterId: number) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      activatePoint(pointId, clusterId)
+    },
+    [activatePoint]
+  )
 
   const legendClusters = useMemo(() => {
     if (!data) return []
@@ -108,19 +133,27 @@ export default function MapTab({
 
             {visiblePoints.slice(0, 300).map((point) => {
               const isActive = point.id === selectedPointId
+              const isPreviewExpanded = Boolean(expandedPointIds[point.id])
               return (
-                <button
+                <div
                   key={point.id}
-                  type="button"
                   className={`chat-map-row chat-map-row--button ${isActive ? 'chat-map-row--active' : ''}`}
-                  onClick={() => onSelectPoint(point.id, point.cluster_id)}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => activatePoint(point.id, point.cluster_id)}
+                  onKeyDown={(event) => handleRowKeyDown(event, point.id, point.cluster_id)}
                 >
                   <span>{point.id}</span>
                   <span>{formatNumber(point.x)}</span>
                   <span>{formatNumber(point.y)}</span>
                   <span>{point.cluster_id}</span>
-                  <span className="chat-ellipsis-text">{point.preview}</span>
-                </button>
+                  <ExpandableText
+                    text={point.preview}
+                    expanded={isPreviewExpanded}
+                    onToggle={() => togglePointPreview(point.id)}
+                    className="chat-map-preview-cell"
+                  />
+                </div>
               )
             })}
           </div>

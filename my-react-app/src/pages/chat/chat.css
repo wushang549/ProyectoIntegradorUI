@@ -698,6 +698,10 @@
   border-top: 1px solid rgba(15, 23, 42, 0.06);
 }
 
+.chat-map-row > span {
+  min-width: 0;
+}
+
 .chat-map-row:first-child {
   border-top: none;
 }
@@ -706,12 +710,15 @@
   background: #f8fafc;
   font-weight: 600;
   color: #1e293b;
+  align-items: center;
 }
 
 .chat-map-row--button {
   width: 100%;
   text-align: left;
   background: #ffffff;
+  align-items: flex-start;
+  cursor: pointer;
 }
 
 .chat-map-row--button:hover {
@@ -836,12 +843,59 @@
   padding: 14px;
 }
 
-.chat-ellipsis-text {
-  display: inline-block;
+.chat-expandable-text {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
+  max-width: 100%;
+}
+
+.chat-expandable-text__content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.chat-expandable-text__content--collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.chat-expandable-text__content--expanded {
+  white-space: normal;
+}
+
+.chat-expandable-text__toggle {
+  align-self: flex-start;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.chat-expandable-text__toggle:hover {
+  color: #1e3a8a;
+}
+
+.chat-expandable-text__toggle:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.38);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+.chat-map-preview-cell {
+  width: 100%;
 }
 
 .chat-clusters-grid {
@@ -864,6 +918,25 @@
 
 .chat-list-item--small {
   font-size: 12px;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.chat-list-item--clickable {
+  cursor: pointer;
+}
+
+.chat-list-item--clickable:hover {
+  border-color: rgba(81, 112, 255, 0.25);
+}
+
+.chat-list-item--clickable:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.38);
+  outline-offset: 1px;
+}
+
+.chat-representative-preview {
+  flex: 1;
 }
 
 .chat-granulate-actions {
@@ -885,6 +958,15 @@
   background: #f8fafc;
   display: grid;
   gap: 8px;
+}
+
+.chat-granulate-item-header {
+  display: grid;
+  gap: 4px;
+}
+
+.chat-granulate-preview {
+  color: #475569;
 }
 
 .chat-chip-row {

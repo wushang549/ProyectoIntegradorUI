@@ -22,8 +22,11 @@ export type HierarchyInspection = {
 type HierarchyLeaf = HierarchyResponse['leaves'][number]
 
 const SVG_WIDTH = 1180
-const SVG_HEIGHT = 560
+const SVG_HEIGHT = 640
 const SVG_MARGIN = 48
+const HEIGHT_EASING_EXPONENT = 0.82
+const MIN_LEVEL_GAP_PX = 10
+const MAX_LEVEL_GAP_PX = 18
 
 type ClusterStyle = {
   link: string
@@ -109,6 +112,55 @@ export default function Dendrogram({
     return map
   }, [hierarchy.leaves])
 
+  const orderedChildrenByNode = useMemo(() => {
+    const sortKeyByNodeId = new Map<string, string>()
+    const visiting = new Set<string>()
+
+    const resolveSortKey = (nodeId: string): string => {
+      const cached = sortKeyByNodeId.get(nodeId)
+      if (cached) return cached
+      if (visiting.has(nodeId)) return nodeId
+
+      const leaf = leavesByNodeId.get(nodeId)
+      if (leaf) {
+        sortKeyByNodeId.set(nodeId, leaf.id)
+        return leaf.id
+      }
+
+      const node = nodes[nodeId]
+      if (!node || node.children_ids.length === 0) {
+        sortKeyByNodeId.set(nodeId, nodeId)
+        return nodeId
+      }
+
+      visiting.add(nodeId)
+      const childKeys = node.children_ids
+        .filter((childId) => Boolean(nodes[childId]))
+        .map((childId) => resolveSortKey(childId))
+        .sort((left, right) => left.localeCompare(right))
+      visiting.delete(nodeId)
+
+      const key = childKeys[0] ?? nodeId
+      sortKeyByNodeId.set(nodeId, key)
+      return key
+    }
+
+    const ordered = new Map<string, string[]>()
+    for (const [nodeId, node] of Object.entries(nodes)) {
+      const sortedChildren = [...node.children_ids]
+        .filter((childId) => Boolean(nodes[childId]))
+        .sort((leftId, rightId) => {
+          const leftKey = resolveSortKey(leftId)
+          const rightKey = resolveSortKey(rightId)
+          return leftKey.localeCompare(rightKey)
+        })
+      ordered.set(nodeId, sortedChildren)
+      resolveSortKey(nodeId)
+    }
+
+    return ordered
+  }, [leavesByNodeId, nodes])
+
   const descendantLeavesByNode = useMemo(() => {
     const cache = new Map<string, HierarchyLeaf[]>()
 
@@ -151,7 +203,8 @@ export default function Dendrogram({
         ordered.push(nodeId)
         return
       }
-      for (const childId of node.children_ids) {
+      const childIds = orderedChildrenByNode.get(nodeId) ?? node.children_ids
+      for (const childId of childIds) {
         walk(childId)
       }
     }
@@ -163,7 +216,7 @@ export default function Dendrogram({
     }
 
     return ordered
-  }, [nodes, rootId])
+  }, [nodes, orderedChildrenByNode, rootId])
 
   const leafIndexByNodeId = useMemo(() => {
     const map = new Map<string, number>()
@@ -192,6 +245,7 @@ export default function Dendrogram({
     const xByNodeId = new Map<string, number>()
     const yByNodeId = new Map<string, number>()
     const leafCount = Math.max(leafOrder.length, 1)
+    const plotHeight = SVG_HEIGHT - SVG_MARGIN * 2
     const maxHeight = Math.max(...Object.values(nodes).map((node) => node.height), 0)
 
     const calcX = (nodeId: string): number => {
@@ -215,20 +269,87 @@ export default function Dendrogram({
         return x
       }
 
-      const childXs = node.children_ids.map((childId) => calcX(childId))
+      const childIds = orderedChildrenByNode.get(nodeId) ?? node.children_ids
+      const childXs = childIds.map((childId) => calcX(childId))
       const x = childXs.reduce((sum, value) => sum + value, 0) / Math.max(childXs.length, 1)
       xByNodeId.set(nodeId, x)
       return x
     }
 
-    const calcY = (height: number) => {
+    const calcYByHeight = (height: number) => {
       if (maxHeight <= 0) return SVG_HEIGHT - SVG_MARGIN
-      return SVG_MARGIN + ((maxHeight - height) / maxHeight) * (SVG_HEIGHT - SVG_MARGIN * 2)
+      const progress = (maxHeight - height) / maxHeight
+      const easedProgress = Math.pow(progress, HEIGHT_EASING_EXPONENT)
+      return SVG_MARGIN + easedProgress * plotHeight
     }
 
+    const rawYByNodeId = new Map<string, number>()
     for (const [nodeId, node] of Object.entries(nodes)) {
+      rawYByNodeId.set(nodeId, calcYByHeight(node.height))
+    }
+
+    const depthByNodeId = new Map<string, number>()
+    const markDepth = (nodeId: string, depth: number) => {
+      if (!nodes[nodeId]) return
+      const currentDepth = depthByNodeId.get(nodeId)
+      if (typeof currentDepth === 'number' && currentDepth <= depth) return
+
+      depthByNodeId.set(nodeId, depth)
+      const childIds = orderedChildrenByNode.get(nodeId) ?? nodes[nodeId].children_ids
+      for (const childId of childIds) {
+        markDepth(childId, depth + 1)
+      }
+    }
+    markDepth(rootId, 0)
+    for (const nodeId of Object.keys(nodes)) {
+      if (!depthByNodeId.has(nodeId)) {
+        depthByNodeId.set(nodeId, 0)
+      }
+    }
+
+    const maxDepth = Math.max(...depthByNodeId.values(), 0)
+    const minLevelGap = Math.max(
+      MIN_LEVEL_GAP_PX,
+      Math.min(MAX_LEVEL_GAP_PX, (plotHeight / Math.max(maxDepth + 1, 1)) * 0.75)
+    )
+
+    const placedNodeIds = new Set<string>()
+    const placeNode = (nodeId: string, minY: number | null) => {
+      const node = nodes[nodeId]
+      if (!node || placedNodeIds.has(nodeId)) return
+
+      const rawY = rawYByNodeId.get(nodeId) ?? SVG_HEIGHT - SVG_MARGIN
+      const adjustedY = minY === null ? rawY : Math.max(rawY, minY)
+      yByNodeId.set(nodeId, adjustedY)
+      placedNodeIds.add(nodeId)
+
+      const childIds = orderedChildrenByNode.get(nodeId) ?? node.children_ids
+      for (const childId of childIds) {
+        placeNode(childId, adjustedY + minLevelGap)
+      }
+    }
+    placeNode(rootId, null)
+
+    for (const nodeId of Object.keys(nodes)) {
+      if (!yByNodeId.has(nodeId)) {
+        yByNodeId.set(nodeId, rawYByNodeId.get(nodeId) ?? SVG_HEIGHT - SVG_MARGIN)
+      }
+    }
+
+    const maxAdjustedY = Math.max(...yByNodeId.values(), SVG_MARGIN)
+    const bottomBound = SVG_HEIGHT - SVG_MARGIN
+    if (maxAdjustedY > bottomBound) {
+      const span = maxAdjustedY - SVG_MARGIN
+      if (span > 0) {
+        const scale = (bottomBound - SVG_MARGIN) / span
+        for (const [nodeId, y] of yByNodeId.entries()) {
+          yByNodeId.set(nodeId, SVG_MARGIN + (y - SVG_MARGIN) * scale)
+        }
+      }
+    }
+
+    for (const nodeId of Object.keys(nodes)) {
       calcX(nodeId)
-      yByNodeId.set(nodeId, calcY(node.height))
     }
 
     return {
@@ -236,7 +357,7 @@ export default function Dendrogram({
       yByNodeId,
       maxHeight,
     }
-  }, [leafIndexByNodeId, leafOrder.length, nodes])
+  }, [leafIndexByNodeId, leafOrder.length, nodes, orderedChildrenByNode, rootId])
 
   const heightTicks = useMemo(() => {
     if (layout.maxHeight <= 0) {
@@ -275,7 +396,8 @@ export default function Dendrogram({
       if (node.children_ids.length === 0) return
       if (collapsedNodes[nodeId]) return
 
-      for (const childId of node.children_ids) {
+      const childIds = orderedChildrenByNode.get(nodeId) ?? node.children_ids
+      for (const childId of childIds) {
         if (!nodes[childId]) continue
         links.push({ parentId: nodeId, childId })
         visit(childId)
@@ -288,7 +410,7 @@ export default function Dendrogram({
       visibleNodeIds,
       links,
     }
-  }, [collapsedNodes, nodes, rootId])
+  }, [collapsedNodes, nodes, orderedChildrenByNode, rootId])
 
   const selectedDescendants = useMemo(() => {
     if (!selectedNodeId) return [] as HierarchyLeaf[]
@@ -434,7 +556,7 @@ export default function Dendrogram({
             return (
               <path
                 key={`${link.parentId}-${link.childId}`}
-                d={`M ${parentX} ${parentY} V ${childY} H ${childX}`}
+                d={`M ${parentX} ${parentY} H ${childX} V ${childY}`}
                 className={[
                   'chat-dendrogram-link',
                   isRelatedToSelection ? 'chat-dendrogram-link--active' : '',
