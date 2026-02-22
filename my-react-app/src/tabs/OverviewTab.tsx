@@ -67,11 +67,7 @@ export default function OverviewTab({
       emptyMessage="No overview insights are available yet."
     >
       <section className="chat-result-panel chat-section-panel">
-        <SectionHeading
-          title="Overview"
-          subtitle="Main takeaways in plain language"
-          meaning="What this means: this page gives the fastest read of what is happening in your calls and where to focus next."
-        />
+        <SectionHeading title="Overview" />
 
         <section className="chat-overview-block">
           <h3 className="chat-card-title">Key findings</h3>
@@ -79,11 +75,14 @@ export default function OverviewTab({
             <p className="chat-muted-text">No key findings are available for this run yet.</p>
           )}
           {findings.length > 0 && (
-            <ul className="chat-bullet-list">
+            <div className="chat-findings-grid">
               {findings.map((finding, index) => (
-                <li key={`finding-${index}`}>{finding}</li>
+                <article key={`finding-${index}`} className="chat-finding-card">
+                  <span className="chat-finding-index">{index + 1}</span>
+                  <p className="chat-finding-text">{finding}</p>
+                </article>
               ))}
-            </ul>
+            </div>
           )}
         </section>
 
@@ -94,7 +93,7 @@ export default function OverviewTab({
               const clusterId = findClusterIdByInsightLabel(overview, theme.label)
               const style = getClusterStyle(clusterId)
               const isActive = clusterId !== null && selectedClusterId === clusterId
-              const exampleList = theme.examples.slice(0, 2)
+              const exampleList = theme.examples
 
               return (
                 <article
@@ -104,11 +103,13 @@ export default function OverviewTab({
                 >
                   <div className="chat-main-theme-head">
                     <h4 className="chat-card-title">{theme.label}</h4>
-                    <strong style={{ color: style.accent }}>{theme.size} calls</strong>
+                    <strong className="chat-theme-size chat-theme-size--fixed" style={{ color: style.accent }}>
+                      {theme.size} calls
+                    </strong>
                   </div>
 
                   {exampleList.length > 0 && (
-                    <div className="chat-list-grid">
+                    <div className="chat-list-grid chat-card-scroll-list">
                       {exampleList.map((example, exampleIndex) => {
                         const key = `insight-${index}-${exampleIndex}`
                         return (
@@ -140,7 +141,7 @@ export default function OverviewTab({
                   {clusterId !== null && (
                     <button
                       type="button"
-                      className="chat-plain-btn"
+                      className="chat-plain-btn chat-card-action chat-card-action--full"
                       onClick={() => onSelectCluster(clusterId)}
                     >
                       Explore theme

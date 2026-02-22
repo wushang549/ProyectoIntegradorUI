@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import type { HierarchyNode, HierarchyResponse, MapResponse } from '../api/analysis.types'
 import ApiState from '../components/common/ApiState'
-import AdvancedSection from '../components/common/AdvancedSection'
 import ExpandableText from '../components/common/ExpandableText'
 import SectionHeading from '../components/common/SectionHeading'
 import Dendrogram from '../components/hierarchy/Dendrogram'
@@ -156,8 +155,7 @@ export default function HierarchyTab({
     const leafIds = descendantLeafIdsByNode.get(selectedNodeId) ?? []
     return leafIds
       .map((leafId) => pointById.get(leafId))
-      .filter(Boolean)
-      .slice(0, 5) as MapResponse['points']
+      .filter(Boolean) as MapResponse['points']
   }, [descendantLeafIdsByNode, pointById, selectedNodeId])
 
   return (
@@ -175,6 +173,25 @@ export default function HierarchyTab({
             subtitle="How specific themes combine into broader ones"
             meaning="What this means: this is a tree of themes. Lower merges are more similar; higher merges are broader."
           />
+
+          <section className="chat-overview-block">
+            <h3 className="chat-card-title">Dendrogram</h3>
+            <p className="chat-muted-text">
+              Merge distance appears on this technical view only. Lower distance means tighter thematic similarity.
+            </p>
+            <div className="chat-dendrogram-wrap">
+              <Dendrogram
+                hierarchy={data}
+                selectedClusterId={selectedClusterId}
+                selectedPointId={selectedPointId}
+                selectedNodeId={selectedNodeId}
+                onSelectCluster={onSelectCluster}
+                onSelectPoint={onSelectPoint}
+                onSelectNode={onSelectNode}
+                showMergeScale
+              />
+            </div>
+          </section>
 
           <div className="chat-tree-list" role="tree" aria-label="Theme tree list">
             {treeRows.map(({ node, depth }) => {
@@ -210,7 +227,7 @@ export default function HierarchyTab({
                       </button>
                     )}
 
-                    {!hasChildren && <span className="chat-tree-toggle chat-tree-toggle--leaf" aria-hidden>�</span>}
+                    {!hasChildren && <span className="chat-tree-toggle chat-tree-toggle--leaf" aria-hidden>•</span>}
 
                     <button
                       type="button"
@@ -246,7 +263,7 @@ export default function HierarchyTab({
                 </p>
               </div>
 
-              <div className="chat-list-grid">
+              <div className="chat-list-grid chat-card-scroll-list">
                 {selectedNodeExamples.map((point) => (
                   <div
                     key={`tree-example-${point.id}`}
@@ -304,25 +321,9 @@ export default function HierarchyTab({
             </section>
           )}
 
-          <AdvancedSection title="Advanced: dendrogram and merge distance">
-            <p className="chat-muted-text">
-              Merge distance appears on this technical view only. Lower distance means tighter thematic similarity.
-            </p>
-            <div className="chat-dendrogram-wrap">
-              <Dendrogram
-                hierarchy={data}
-                selectedClusterId={selectedClusterId}
-                selectedPointId={selectedPointId}
-                selectedNodeId={selectedNodeId}
-                onSelectCluster={onSelectCluster}
-                onSelectPoint={onSelectPoint}
-                onSelectNode={onSelectNode}
-                showMergeScale
-              />
-            </div>
-          </AdvancedSection>
         </section>
       )}
     </ApiState>
   )
 }
+

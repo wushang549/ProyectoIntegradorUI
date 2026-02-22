@@ -38,6 +38,9 @@ const SVG_MARGIN = 48
 const HEIGHT_EASING_EXPONENT = 0.82
 const MIN_LEVEL_GAP_PX = 10
 const MAX_LEVEL_GAP_PX = 18
+const MIN_ZOOM = 0.2
+const MAX_ZOOM = 2.2
+const ZOOM_STEP = 0.05
 
 type ClusterStyle = {
   link: string
@@ -86,6 +89,7 @@ export default function Dendrogram({
 }: DendrogramProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({})
+  const [zoom, setZoom] = useState(1)
 
   const nodes = hierarchy.nodes
   const rootId = hierarchy.root_id
@@ -427,6 +431,17 @@ export default function Dendrogram({
     }))
   }, [])
 
+  const zoomIn = useCallback(() => {
+    setZoom((prev) => Math.min(MAX_ZOOM, Number((prev + ZOOM_STEP).toFixed(2))))
+  }, [])
+
+  const zoomOut = useCallback(() => {
+    setZoom((prev) => Math.max(MIN_ZOOM, Number((prev - ZOOM_STEP).toFixed(2))))
+  }, [])
+
+  const zoomedWidth = Math.max(420, Math.round(svgWidth * zoom))
+  const zoomedHeight = Math.max(320, Math.round(SVG_HEIGHT * zoom))
+
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
       const leaves = descendantLeavesByNode.get(nodeId) ?? []
@@ -484,22 +499,49 @@ export default function Dendrogram({
         <p className="chat-muted-text">
           Click a node to filter by its dominant cluster. Double-click a node to collapse/expand.
         </p>
-        {selectedNodeCanCollapse && selectedNodeId && (
-          <button
-            type="button"
-            className="chat-plain-btn"
-            onClick={() => toggleNode(selectedNodeId)}
-          >
-            {selectedNodeIsCollapsed ? 'Expand selected node' : 'Collapse selected node'}
-          </button>
-        )}
+        <div className="chat-hierarchy-toolbar-actions">
+          <div className="chat-dendrogram-zoom-controls" aria-label="Dendrogram zoom controls">
+            <button
+              type="button"
+              className="chat-plain-btn"
+              onClick={zoomOut}
+              disabled={zoom <= MIN_ZOOM}
+              aria-label="Zoom out"
+            >
+              -
+            </button>
+            <span className="chat-muted-text">{Math.round(zoom * 100)}%</span>
+            <button
+              type="button"
+              className="chat-plain-btn"
+              onClick={zoomIn}
+              disabled={zoom >= MAX_ZOOM}
+              aria-label="Zoom in"
+            >
+              +
+            </button>
+          </div>
+          {selectedNodeCanCollapse && selectedNodeId && (
+            <button
+              type="button"
+              className="chat-plain-btn"
+              onClick={() => toggleNode(selectedNodeId)}
+            >
+              {selectedNodeIsCollapsed ? 'Expand selected node' : 'Collapse selected node'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="chat-dendrogram-wrap">
         <svg
           className="chat-dendrogram-svg"
           viewBox={`0 0 ${svgWidth} ${SVG_HEIGHT}`}
-          style={{ minWidth: `${svgWidth}px` }}
+          style={{
+            width: `${zoomedWidth}px`,
+            minWidth: `${zoomedWidth}px`,
+            height: `${zoomedHeight}px`,
+          }}
           role="img"
           aria-label="Hierarchy dendrogram"
         >

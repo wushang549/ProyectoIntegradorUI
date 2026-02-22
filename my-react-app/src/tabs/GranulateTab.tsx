@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react'
-import type { AnalysisGranulateResponse, MapResponse } from '../api/analysis.types'
+import type {
+  AnalysisGranulateResponse,
+  GranulateAspectAggregate,
+  MapResponse,
+} from '../api/analysis.types'
 import ApiState from '../components/common/ApiState'
 import AdvancedSection from '../components/common/AdvancedSection'
 import ExpandableText from '../components/common/ExpandableText'
@@ -38,6 +42,13 @@ function sentimentLabel(score: number) {
   return 'Mixed/Neutral'
 }
 
+function aggregateSentimentScore(aspect: GranulateAspectAggregate) {
+  if (typeof aspect.avg_sentiment_score === 'number') return aspect.avg_sentiment_score
+  if (typeof aspect.avg_sentiment === 'number') return aspect.avg_sentiment
+  if (typeof aspect.direction_score === 'number') return aspect.direction_score
+  return 0
+}
+
 export default function GranulateTab({
   data,
   mapData,
@@ -64,73 +75,50 @@ export default function GranulateTab({
 
   const selectedClusterAggregate = useMemo(() => {
     if (!data || selectedClusterId === null) return null
-    return data.per_cluster_aggregate.find((row) => row.cluster_id === selectedClusterId) ?? null
+    return (data.per_cluster_aggregate ?? []).find((row) => row.cluster_id === selectedClusterId) ?? null
   }, [data, selectedClusterId])
 
   const topAspects = useMemo(() => {
     if (!data) return []
-    const source =
-      selectedClusterAggregate?.aggregate_aspect_summary ?? data.aggregate_aspect_summary
+    const source = selectedClusterAggregate?.aggregate_aspect_summary ?? data.aggregate_aspect_summary ?? []
 
     return [...source].filter((aspect) => aspect.count > 0).sort((a, b) => b.count - a.count)
   }, [data, selectedClusterAggregate])
 
-  const hasItemDetails = Boolean(data && data.items.length > 0)
+  const hasItemDetails = (data?.items?.length ?? 0) > 0
 
-  const itemLevelSentiment = useMemo(() => {
-    const aggregate = new Map<string, { totalCount: number; weightedSentiment: number }>()
-
-    for (const item of data?.items ?? []) {
-      if (selectedClusterId !== null) {
-        const itemClusterId = clusterByItemId.get(item.id)
-        if (itemClusterId !== selectedClusterId) continue
-      }
-
-      for (const [aspect, summary] of Object.entries(item.result.aspect_summary)) {
-        const count = summary.count ?? 0
-        if (count <= 0) continue
-        const score = typeof summary.avg_sentiment === 'number' ? summary.avg_sentiment : 0
-
-        const current = aggregate.get(aspect) ?? { totalCount: 0, weightedSentiment: 0 }
-        current.totalCount += count
-        current.weightedSentiment += score * count
-        aggregate.set(aspect, current)
-      }
-    }
-
-    const normalized: SentimentAspectSummary[] = []
-    for (const [aspect, value] of aggregate.entries()) {
-      if (value.totalCount <= 0) continue
-      normalized.push({
-        aspect,
-        count: value.totalCount,
-        weightedScore: value.weightedSentiment / value.totalCount,
-      })
-    }
+  const aggregateSentiment = useMemo(() => {
+    const normalized: SentimentAspectSummary[] = topAspects.map((aspect) => ({
+      aspect: aspect.aspect,
+      count: aspect.count,
+      weightedScore: aggregateSentimentScore(aspect),
+    }))
 
     normalized.sort((left, right) => right.count - left.count)
     return normalized
-  }, [clusterByItemId, data?.items, selectedClusterId])
+  }, [topAspects])
 
   const topPositive = useMemo(() => {
-    return itemLevelSentiment
+    return aggregateSentiment
       .filter((item) => item.weightedScore > 0.12)
       .sort((a, b) => b.weightedScore - a.weightedScore)
       .slice(0, 4)
-  }, [itemLevelSentiment])
+  }, [aggregateSentiment])
 
   const topNegative = useMemo(() => {
-    return itemLevelSentiment
+    return aggregateSentiment
       .filter((item) => item.weightedScore < -0.12)
       .sort((a, b) => a.weightedScore - b.weightedScore)
       .slice(0, 4)
-  }, [itemLevelSentiment])
+  }, [aggregateSentiment])
 
   const filteredItems = useMemo(() => {
-    if (!data) return []
+    const items = data?.items ?? []
 
-    return data.items.filter((item) => {
-      if (selectedAspect && !Object.prototype.hasOwnProperty.call(item.result.aspect_summary, selectedAspect)) {
+    return items.filter((item) => {
+      const summaries = item.result.aspect_summary ?? {}
+
+      if (selectedAspect && !Object.prototype.hasOwnProperty.call(summaries, selectedAspect)) {
         return false
       }
 
@@ -141,7 +129,7 @@ export default function GranulateTab({
 
       return true
     })
-  }, [clusterByItemId, data, selectedAspect, selectedClusterId])
+  }, [clusterByItemId, data?.items, selectedAspect, selectedClusterId])
 
   const taxonomyItems = useMemo(() => {
     const set = new Set<string>()
@@ -216,11 +204,8 @@ export default function GranulateTab({
           <section className="chat-sentiment-columns">
             <article className="chat-sentiment-card">
               <h3 className="chat-card-title">Top positive aspects</h3>
-              {hasItemDetails && topPositive.length === 0 && (
-                <p className="chat-muted-text">No clearly positive aspects in current sample.</p>
-              )}
-              {!hasItemDetails && (
-                <p className="chat-muted-text">Load examples to compute positive/negative direction.</p>
+              {topPositive.length === 0 && (
+                <p className="chat-muted-text">No clearly positive aspects in current summary.</p>
               )}
               <div className="chat-list-grid">
                 {topPositive.map((aspect) => (
@@ -234,11 +219,8 @@ export default function GranulateTab({
 
             <article className="chat-sentiment-card">
               <h3 className="chat-card-title">Top negative aspects</h3>
-              {hasItemDetails && topNegative.length === 0 && (
-                <p className="chat-muted-text">No clearly negative aspects in current sample.</p>
-              )}
-              {!hasItemDetails && (
-                <p className="chat-muted-text">Load examples to compute positive/negative direction.</p>
+              {topNegative.length === 0 && (
+                <p className="chat-muted-text">No clearly negative aspects in current summary.</p>
               )}
               <div className="chat-list-grid">
                 {topNegative.map((aspect) => (
@@ -272,10 +254,16 @@ export default function GranulateTab({
               <div className="chat-theme-items-list" role="table" aria-label="Aspect examples">
                 {filteredItems.slice(0, visibleExamplesCount).map((item) => {
                   const clusterId = clusterByItemId.get(item.id)
+                  const summaries = item.result.aspect_summary ?? {}
                   const aspectSummary = selectedAspect
-                    ? item.result.aspect_summary[selectedAspect]
-                    : Object.values(item.result.aspect_summary)[0]
-                  const score = typeof aspectSummary?.avg_sentiment === 'number' ? aspectSummary.avg_sentiment : 0
+                    ? summaries[selectedAspect]
+                    : Object.values(summaries)[0]
+                  const score =
+                    typeof aspectSummary?.avg_sentiment_score === 'number'
+                      ? aspectSummary.avg_sentiment_score
+                      : typeof aspectSummary?.avg_sentiment === 'number'
+                        ? aspectSummary.avg_sentiment
+                        : 0
 
                   return (
                     <div

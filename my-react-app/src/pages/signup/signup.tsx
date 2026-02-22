@@ -4,7 +4,7 @@ import googleIcon from '../../assets/google.png'
 import appleIcon from '../../assets/apple.png'
 import AuthLayout from '../auth/AuthLayout'
 import './signup.css'
-import granulateLogo from '../../assets/Granulate logo.png'
+import granulateLogo from '../../assets/granulate-logo-new.png'
 
 export default function Signup() {
   const [showPassword, setShowPassword] = useState(false)

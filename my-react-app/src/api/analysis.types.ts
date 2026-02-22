@@ -187,16 +187,34 @@ export interface GranulateClusterAggregate {
   cluster_label: string
   items_included: number
   items_total: number
-  aggregate_aspect_summary: Array<{ aspect: string; count: number }>
+  aggregate_aspect_summary: GranulateAspectAggregate[]
+}
+
+export interface GranulateAspectAggregate {
+  aspect: string
+  count: number
+  avg_sentiment?: number
+  avg_sentiment_score?: number
+  avg_sentiment_raw?: number
+  positive_count?: number
+  negative_count?: number
+  neutral_count?: number
+  positive?: number
+  negative?: number
+  neutral?: number
+  direction?: 'positive' | 'neutral' | 'negative'
+  direction_score?: number
+  top_evidence?: string[]
 }
 
 export interface AnalysisGranulateResponse {
   mode: 'text' | 'csv'
-  aggregate_aspect_summary: Array<{ aspect: string; count: number }>
-  per_cluster_aggregate: GranulateClusterAggregate[]
+  aggregate_aspect_summary?: GranulateAspectAggregate[]
+  per_cluster_aggregate?: GranulateClusterAggregate[]
   items_included: number
   items_total: number
-  items: Array<{
+  item_ids_included?: string[]
+  items?: Array<{
     id: string
     preview: string
     metadata?: Record<string, string | number | boolean | null>

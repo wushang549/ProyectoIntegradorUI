@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import logo from '../../assets/Granulate logo.png'
+import logo from '../../assets/granulate-logo-new.png'
 import './siteheader.css'
 
 const SECTION_IDS = ['features', 'how-it-works', 'example'] as const

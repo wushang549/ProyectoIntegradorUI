@@ -1,7 +1,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import granulateLogo from '../../assets/Granulate logo.png'
+import granulateLogo from '../../assets/granulate-logo-new.png'
 import {
   ApiError,
   getAnalysisClusters,
@@ -671,7 +671,7 @@ export default function Chat() {
         with409Retry(() => getAnalysisInsights(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisMap(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisClusters(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
-        with409Retry(() => getAnalysisGranulate(nextAnalysisId, false), ARTIFACT_TIMEOUT_MS),
+        with409Retry(() => getAnalysisGranulate(nextAnalysisId, true), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisHierarchy(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
       ])
 
@@ -738,7 +738,7 @@ export default function Chat() {
         text: file ? undefined : text,
         options: {
           granulate: true,
-          granulate_return_items: false,
+          granulate_return_items: true,
         },
       })
 

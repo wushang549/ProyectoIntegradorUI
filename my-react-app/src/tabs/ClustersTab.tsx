@@ -86,6 +86,16 @@ export default function ClustersTab({
     return mapData.points.filter((point) => point.cluster_id === openItemsClusterId)
   }, [mapData, openItemsClusterId])
 
+  const pointsByClusterId = useMemo(() => {
+    const map = new Map<number, Array<{ id: string; preview: string }>>()
+    for (const point of mapData?.points ?? []) {
+      const current = map.get(point.cluster_id) ?? []
+      current.push({ id: point.id, preview: point.preview })
+      map.set(point.cluster_id, current)
+    }
+    return map
+  }, [mapData?.points])
+
   const handleItemKeyDown = (event: KeyboardEvent<HTMLDivElement>, pointId: string, clusterId: number) => {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
@@ -148,7 +158,7 @@ export default function ClustersTab({
             {visibleClusters.map((cluster) => {
               const style = getClusterStyle(cluster.cluster_id)
               const isActive = selectedClusterId === cluster.cluster_id
-              const representativeExamples = cluster.representatives.slice(0, 3)
+              const representativeExamples = pointsByClusterId.get(cluster.cluster_id) ?? cluster.representatives
               const normalizedLabel = normalizeLabel(cluster.label)
               const hasDuplicateLabel = (duplicateLabelCounts.get(normalizedLabel) ?? 0) > 1
 
@@ -165,12 +175,12 @@ export default function ClustersTab({
                         <p className="chat-muted-text">Cluster {cluster.cluster_id}</p>
                       )}
                     </div>
-                    <strong className="chat-theme-size" style={{ color: style.accent }}>
+                    <strong className="chat-theme-size chat-theme-size--fixed" style={{ color: style.accent }}>
                       {cluster.size} calls
                     </strong>
                   </div>
 
-                  <div className="chat-theme-preview-list">
+                  <div className="chat-theme-preview-list chat-card-scroll-list">
                     {representativeExamples.map((rep) => {
                       const previewKey = `theme-${cluster.cluster_id}-${rep.id}`
                       return (
@@ -208,14 +218,14 @@ export default function ClustersTab({
                   <div className="chat-theme-actions">
                     <button
                       type="button"
-                      className="chat-plain-btn"
+                      className="chat-plain-btn chat-card-action"
                       onClick={() => onSelectCluster(isActive ? null : cluster.cluster_id)}
                     >
                       {isActive ? 'Unselect theme' : 'Select theme'}
                     </button>
                     <button
                       type="button"
-                      className="chat-plain-btn"
+                      className="chat-plain-btn chat-card-action"
                       onClick={() => {
                         onSelectCluster(cluster.cluster_id)
                         setOpenItemsClusterId(cluster.cluster_id)

@@ -11,7 +11,6 @@ import ApiState from '../components/common/ApiState'
 import AdvancedSection from '../components/common/AdvancedSection'
 import ExpandableText from '../components/common/ExpandableText'
 import SectionHeading from '../components/common/SectionHeading'
-import { getClusterStyle } from '../utils/insightsTheme'
 
 type MapTabProps = {
   data: MapResponse | null
@@ -30,9 +29,51 @@ type PositionedPoint = MapResponse['points'][number] & {
   clusterLabel: string
 }
 
+type MapShape = 'circle' | 'square' | 'triangle' | 'diamond'
+
+type ClusterVisual = {
+  accent: string
+  border: string
+  shape: MapShape
+}
+
 const PLOT_WIDTH = 980
 const PLOT_HEIGHT = 560
 const PLOT_PADDING = 32
+const DOT_SAFE_PADDING = 10
+const TOOLTIP_OFFSET = 14
+const TOOLTIP_EDGE_GAP = 8
+const TOOLTIP_MAX_WIDTH = 340
+const TOOLTIP_ESTIMATED_HEIGHT = 180
+
+const MAP_COLOR_PALETTE = [
+  '#e11d48',
+  '#2563eb',
+  '#059669',
+  '#f59e0b',
+  '#9333ea',
+  '#0891b2',
+  '#dc2626',
+  '#65a30d',
+  '#f97316',
+  '#7c3aed',
+  '#0d9488',
+  '#db2777',
+  '#0369a1',
+  '#16a34a',
+  '#ca8a04',
+  '#4f46e5',
+  '#b91c1c',
+  '#15803d',
+  '#ea580c',
+  '#6d28d9',
+  '#0f766e',
+  '#be185d',
+  '#1d4ed8',
+  '#a16207',
+]
+
+const SHAPE_FALLBACKS: MapShape[] = ['triangle', 'square', 'diamond']
 
 function normalize(value: number, min: number, max: number, outputMin: number, outputMax: number) {
   if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || max - min <= 0) {
@@ -44,6 +85,82 @@ function normalize(value: number, min: number, max: number, outputMin: number, o
 
 function safeNumeric(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function clamp(value: number, min: number, max: number) {
+  if (max <= min) return min
+  return Math.min(Math.max(value, min), max)
+}
+
+function borderFromAccent(accent: string) {
+  return accent
+}
+
+function generatedAccent(index: number) {
+  const hue = Math.round((index * 137.508) % 360)
+  return `hsl(${hue} 74% 48%)`
+}
+
+function clusterVisualForIndex(index: number): ClusterVisual {
+  const accent =
+    index < MAP_COLOR_PALETTE.length ? MAP_COLOR_PALETTE[index] : generatedAccent(index)
+  const shape: MapShape =
+    index < MAP_COLOR_PALETTE.length
+      ? 'circle'
+      : SHAPE_FALLBACKS[(index - MAP_COLOR_PALETTE.length) % SHAPE_FALLBACKS.length]
+
+  return {
+    accent,
+    border: borderFromAccent(accent),
+    shape,
+  }
+}
+
+function markerNode(
+  shape: MapShape,
+  size: number,
+  fill: string,
+  stroke: string,
+  strokeWidth: number
+) {
+  if (shape === 'square') {
+    return (
+      <rect
+        x={-size}
+        y={-size}
+        width={size * 2}
+        height={size * 2}
+        rx={1.8}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+    )
+  }
+
+  if (shape === 'triangle') {
+    return (
+      <polygon
+        points={`0,${-size} ${size},${size} ${-size},${size}`}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+    )
+  }
+
+  if (shape === 'diamond') {
+    return (
+      <polygon
+        points={`0,${-size} ${size},0 0,${size} ${-size},0`}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+    )
+  }
+
+  return <circle cx={0} cy={0} r={size} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
 }
 
 export default function MapTab({
@@ -69,6 +186,14 @@ export default function MapTab({
     if (!data) return []
     return [...data.clusters].sort((left, right) => right.size - left.size)
   }, [data])
+
+  const clusterVisualById = useMemo(() => {
+    const map = new Map<number, ClusterVisual>()
+    for (const [index, cluster] of clustersSorted.entries()) {
+      map.set(cluster.cluster_id, clusterVisualForIndex(index))
+    }
+    return map
+  }, [clustersSorted])
 
   const clusterLabelById = useMemo(() => {
     const map = new Map<number, string>()
@@ -97,8 +222,20 @@ export default function MapTab({
       ...point,
       clusterLabel:
         point.cluster_label || clusterLabelById.get(point.cluster_id) || `Theme ${point.cluster_id}`,
-      plotX: normalize(point.x, minX, maxX, PLOT_PADDING, PLOT_WIDTH - PLOT_PADDING),
-      plotY: normalize(point.y, minY, maxY, PLOT_HEIGHT - PLOT_PADDING, PLOT_PADDING),
+      plotX: normalize(
+        point.x,
+        minX,
+        maxX,
+        PLOT_PADDING + DOT_SAFE_PADDING,
+        PLOT_WIDTH - PLOT_PADDING - DOT_SAFE_PADDING
+      ),
+      plotY: normalize(
+        point.y,
+        minY,
+        maxY,
+        PLOT_HEIGHT - PLOT_PADDING - DOT_SAFE_PADDING,
+        PLOT_PADDING + DOT_SAFE_PADDING
+      ),
     }))
   }, [clusterLabelById, data])
 
@@ -129,13 +266,18 @@ export default function MapTab({
     [onSelectPoint]
   )
 
-  const updateTooltipPosition = useCallback((event: ReactMouseEvent<SVGCircleElement>) => {
+  const updateTooltipPosition = useCallback((event: ReactMouseEvent<SVGElement>) => {
     const container = plotWrapRef.current
     if (!container) return
     const rect = container.getBoundingClientRect()
+    const containerWidth = container.clientWidth
+    const containerHeight = container.clientHeight
+    const maxLeft = containerWidth - TOOLTIP_MAX_WIDTH - TOOLTIP_EDGE_GAP
+    const maxTop = containerHeight - TOOLTIP_ESTIMATED_HEIGHT - TOOLTIP_EDGE_GAP
+
     setTooltipPos({
-      x: event.clientX - rect.left + 14,
-      y: event.clientY - rect.top + 14,
+      x: clamp(event.clientX - rect.left + TOOLTIP_OFFSET, TOOLTIP_EDGE_GAP, maxLeft),
+      y: clamp(event.clientY - rect.top + TOOLTIP_OFFSET, TOOLTIP_EDGE_GAP, maxTop),
     })
   }, [])
 
@@ -171,7 +313,7 @@ export default function MapTab({
 
           <div className="chat-map-legend" aria-label="Theme legend">
             {clustersSorted.map((cluster) => {
-              const style = getClusterStyle(cluster.cluster_id)
+              const visual = clusterVisualById.get(cluster.cluster_id) ?? clusterVisualForIndex(0)
               const isActive = selectedClusterId === cluster.cluster_id
               return (
                 <button
@@ -179,9 +321,11 @@ export default function MapTab({
                   type="button"
                   className={`chat-map-legend-item ${isActive ? 'chat-map-legend-item--active' : ''}`}
                   onClick={() => onSelectCluster(isActive ? null : cluster.cluster_id)}
-                  style={{ borderColor: isActive ? style.border : undefined }}
+                  style={{ borderColor: isActive ? visual.border : undefined }}
                 >
-                  <span className="chat-map-legend-dot" style={{ backgroundColor: style.accent }} aria-hidden />
+                  <svg className="chat-map-legend-symbol" viewBox="-10 -10 20 20" aria-hidden>
+                    {markerNode(visual.shape, 5.2, visual.accent, '#ffffff', 1)}
+                  </svg>
                   <span className="chat-map-legend-label">{cluster.label}</span>
                   <strong>{cluster.size}</strong>
                 </button>
@@ -205,24 +349,19 @@ export default function MapTab({
               />
 
               {positionedPoints.map((point) => {
-                const style = getClusterStyle(point.cluster_id)
+                const visual = clusterVisualById.get(point.cluster_id) ?? clusterVisualForIndex(0)
                 const matchesSearch = !searchQuery || point.preview.toLowerCase().includes(searchQuery)
                 const fadedByCluster = selectedClusterId !== null && point.cluster_id !== selectedClusterId
                 const fadedBySearch = searchQuery.length > 0 && !matchesSearch
                 const isFaded = fadedByCluster || fadedBySearch
                 const isSelected = selectedPointId === point.id
                 const isClusterSelected = selectedClusterId !== null && point.cluster_id === selectedClusterId
-                const radius = isSelected ? 8 : isClusterSelected ? 6.2 : 5
+                const markerSize = isSelected ? 7.8 : isClusterSelected ? 6.2 : 5.2
 
                 return (
-                  <circle
+                  <g
                     key={point.id}
-                    cx={point.plotX}
-                    cy={point.plotY}
-                    r={radius}
-                    fill={style.accent}
-                    stroke={isSelected ? '#0f172a' : '#ffffff'}
-                    strokeWidth={isSelected ? 2 : 1}
+                    transform={`translate(${point.plotX}, ${point.plotY})`}
                     opacity={isFaded ? 0.16 : 0.92}
                     className="chat-map-dot"
                     onMouseEnter={(event) => {
@@ -235,7 +374,15 @@ export default function MapTab({
                       setTooltipPos(null)
                     }}
                     onClick={() => onSelectPoint(point.id, point.cluster_id)}
-                  />
+                  >
+                    {markerNode(
+                      visual.shape,
+                      markerSize,
+                      visual.accent,
+                      isSelected ? '#0f172a' : '#ffffff',
+                      isSelected ? 2 : 1
+                    )}
+                  </g>
                 )
               })}
             </svg>

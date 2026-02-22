@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import googleIcon from '../../assets/google.png'
 import appleIcon from '../../assets/apple.png'
-import granulateLogo from '../../assets/Granulate logo.png'
+import granulateLogo from '../../assets/granulate-logo-new.png'
 import AuthLayout from '../auth/AuthLayout'
 import './login.css'
 
