@@ -38,6 +38,22 @@ function findClusterIdByInsightLabel(overview: OverviewResponse | null, label: s
   return containsMatch?.cluster_id ?? null
 }
 
+function uniqueNonEmpty(values: string[]) {
+  const result: string[] = []
+  const seen = new Set<string>()
+
+  for (const value of values) {
+    const trimmed = value.trim()
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(trimmed)
+  }
+
+  return result
+}
+
 export default function OverviewTab({
   overview,
   insights,
@@ -54,6 +70,14 @@ export default function OverviewTab({
   const findings = useMemo(() => {
     return (insights?.key_findings ?? []).filter((item) => item.trim().length > 0)
   }, [insights?.key_findings])
+
+  const overviewClustersById = useMemo(() => {
+    const map = new Map<number, OverviewResponse['top_clusters'][number]>()
+    for (const cluster of overview?.top_clusters ?? []) {
+      map.set(cluster.cluster_id, cluster)
+    }
+    return map
+  }, [overview?.top_clusters])
 
   return (
     <ApiState
@@ -89,6 +113,18 @@ export default function OverviewTab({
             {insightThemes.map((theme, index) => {
               const clusterId = findClusterIdByInsightLabel(overview, theme.label)
               const isActive = clusterId !== null && selectedClusterId === clusterId
+              const minExamples = 5
+              const insightExamples = theme.examples
+              const representativeExamples =
+                clusterId !== null
+                  ? (overviewClustersById.get(clusterId)?.representatives ?? []).map(
+                      (representative) => representative.preview
+                    )
+                  : []
+              const examplesToRender = uniqueNonEmpty([...insightExamples, ...representativeExamples]).slice(
+                0,
+                Math.max(minExamples, insightExamples.length)
+              )
 
               return (
                 <ThemeCard
@@ -98,7 +134,7 @@ export default function OverviewTab({
                   clusterId={clusterId}
                   isActive={isActive}
                   topTerms={theme.top_terms.slice(0, 7)}
-                  examples={theme.examples.map((example, exampleIndex) => ({
+                  examples={examplesToRender.map((example, exampleIndex) => ({
                     id: `insight-${index}-${exampleIndex}`,
                     text: example,
                   }))}

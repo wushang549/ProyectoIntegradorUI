@@ -714,6 +714,8 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-start;
+  align-content: flex-start;
 }
 
 .chat-chip {
@@ -876,6 +878,7 @@
 .chat-theme-items-list {
   display: grid;
   gap: 8px;
+  align-content: start;
 }
 
 .chat-card-scroll-list {
@@ -895,6 +898,7 @@
   border-radius: 12px;
   background: var(--chat-surface);
   padding: 10px;
+  height: fit-content;
 }
 
 .chat-theme-actions,
