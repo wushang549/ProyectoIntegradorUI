@@ -695,14 +695,12 @@
 }
 
 .chat-list-item--clickable,
-.chat-theme-item-row,
-.chat-theme-preview-item--clickable {
+.chat-theme-item-row {
   cursor: pointer;
 }
 
 .chat-list-item--clickable:hover,
 .chat-theme-item-row:hover,
-.chat-theme-preview-item--clickable:hover,
 .chat-list-item--active,
 .chat-theme-item-row--active {
   border-color: rgba(29, 78, 216, 0.42);
@@ -787,13 +785,6 @@
   line-height: 1.45;
 }
 
-.chat-theme-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-}
-
-.chat-theme-card,
 .chat-sentiment-card,
 .chat-tree-selection-panel,
 .chat-theme-items-panel {
@@ -804,40 +795,6 @@
   display: grid;
   gap: 10px;
   transition: border-color var(--ease-fast), box-shadow var(--ease-fast);
-}
-
-.chat-theme-card {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.chat-theme-card--active {
-  border-color: rgba(29, 78, 216, 0.45);
-  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.08);
-}
-
-.chat-theme-card-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  column-gap: 10px;
-  min-height: 56px;
-}
-
-.chat-theme-card-head > :first-child {
-  min-width: 0;
-  min-height: 40px;
-  display: grid;
-  align-content: start;
-}
-
-.chat-theme-card-head .chat-card-title {
-  line-height: 1.25;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
 }
 
 .chat-theme-items-head {
@@ -860,21 +817,6 @@
   line-height: 1;
 }
 
-.chat-theme-size {
-  font-size: 13px;
-}
-
-.chat-theme-size--fixed {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  white-space: nowrap;
-  flex-shrink: 0;
-  align-self: start;
-  margin-top: 3px;
-}
-
-.chat-theme-preview-list,
 .chat-theme-items-list {
   display: grid;
   gap: 8px;
@@ -887,21 +829,6 @@
   padding-right: 4px;
 }
 
-.chat-theme-card .chat-card-scroll-list {
-  flex: 1 1 220px;
-  min-height: 220px;
-  max-height: none;
-}
-
-.chat-theme-preview-item {
-  border: 1px solid var(--chat-border);
-  border-radius: 12px;
-  background: var(--chat-surface);
-  padding: 10px;
-  height: fit-content;
-}
-
-.chat-theme-actions,
 .chat-hierarchy-actions {
   display: flex;
   align-items: stretch;
@@ -921,20 +848,6 @@
 
 .chat-card-action--full {
   width: 100%;
-}
-
-.chat-theme-actions .chat-card-action {
-  width: 100%;
-}
-
-.chat-theme-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.chat-theme-card > .chat-card-action--full {
-  margin-top: 0;
 }
 
 .chat-theme-item-id {

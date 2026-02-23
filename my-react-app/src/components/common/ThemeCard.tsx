@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
 import ExpandableText from './ExpandableText'
 import { getClusterStyle } from '../../utils/insightsTheme'
+import './ThemeCard.css'
 
 export type ThemeCardExample = {
   id: string

@@ -4,7 +4,7 @@ import ApiState from '../components/common/ApiState'
 import AdvancedSection from '../components/common/AdvancedSection'
 import ExpandableText from '../components/common/ExpandableText'
 import SectionHeading from '../components/common/SectionHeading'
-import ThemeCard from '../components/common/ThemeCard'
+import ClustersThemeCards from '../components/themes/ClustersThemeCards'
 
 type ClusterSortMode = 'size' | 'alphabetical'
 
@@ -18,10 +18,6 @@ type ClustersTabProps = {
   isLoading: boolean
   error?: string
   onRetry: () => void
-}
-
-function normalizeLabel(value: string) {
-  return value.trim().toLowerCase()
 }
 
 export default function ClustersTab({
@@ -45,15 +41,6 @@ export default function ClustersTab({
   const maxClusterSize = useMemo(() => {
     const sizes = data?.clusters.map((cluster) => cluster.size) ?? []
     return sizes.length > 0 ? Math.max(...sizes) : 1
-  }, [data?.clusters])
-
-  const duplicateLabelCounts = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const cluster of data?.clusters ?? []) {
-      const key = normalizeLabel(cluster.label)
-      map.set(key, (map.get(key) ?? 0) + 1)
-    }
-    return map
   }, [data?.clusters])
 
   const query = search.trim().toLowerCase()
@@ -154,54 +141,18 @@ export default function ClustersTab({
 
           <p className="chat-muted-text">Showing {visibleClusters.length} themes.</p>
 
-          <div className="chat-theme-cards">
-            {visibleClusters.map((cluster) => {
-              const isActive = selectedClusterId === cluster.cluster_id
-              const representativeExamples = pointsByClusterId.get(cluster.cluster_id) ?? cluster.representatives
-              const normalizedLabel = normalizeLabel(cluster.label)
-              const hasDuplicateLabel = (duplicateLabelCounts.get(normalizedLabel) ?? 0) > 1
-
-              return (
-                <ThemeCard
-                  key={cluster.cluster_id}
-                  title={cluster.label}
-                  calls={cluster.size}
-                  clusterId={cluster.cluster_id}
-                  isActive={isActive}
-                  subtitle={hasDuplicateLabel ? `Cluster ${cluster.cluster_id}` : undefined}
-                  topTerms={cluster.top_terms.slice(0, 8)}
-                  examples={representativeExamples.map((rep) => ({
-                    id: `theme-${cluster.cluster_id}-${rep.id}`,
-                    text: rep.preview,
-                    onClick: () => onSelectPoint(rep.id, cluster.cluster_id),
-                    onKeyDown: (event) => handleItemKeyDown(event, rep.id, cluster.cluster_id),
-                  }))}
-                  actions={
-                    <div className="chat-theme-actions">
-                      <button
-                        type="button"
-                        className="chat-plain-btn chat-card-action"
-                        onClick={() => onSelectCluster(isActive ? null : cluster.cluster_id)}
-                      >
-                        {isActive ? 'Unselect theme' : 'Select theme'}
-                      </button>
-                      <button
-                        type="button"
-                        className="chat-plain-btn chat-card-action"
-                        onClick={() => {
-                          onSelectCluster(cluster.cluster_id)
-                          setOpenItemsClusterId(cluster.cluster_id)
-                          setVisibleItemsCount(80)
-                        }}
-                      >
-                        View items
-                      </button>
-                    </div>
-                  }
-                />
-              )
-            })}
-          </div>
+          <ClustersThemeCards
+            clusters={visibleClusters}
+            selectedClusterId={selectedClusterId}
+            pointsByClusterId={pointsByClusterId}
+            onSelectCluster={onSelectCluster}
+            onSelectPoint={onSelectPoint}
+            onViewItems={(clusterId) => {
+              onSelectCluster(clusterId)
+              setOpenItemsClusterId(clusterId)
+              setVisibleItemsCount(80)
+            }}
+          />
 
           {openItemsClusterId !== null && (
             <section className="chat-theme-items-panel">
