@@ -5,7 +5,6 @@ import granulateLogo from '../../assets/granulate-logo-new.png'
 import {
   ApiError,
   getAnalysisClusters,
-  getAnalysisGranulate,
   getAnalysisHierarchy,
   getAnalysisInsights,
   getAnalysisMap,
@@ -14,13 +13,12 @@ import {
   wait,
 } from '../../api/analysis.client'
 import type {
-  AnalysisGranulateResponse,
+  AnalysisStatusResponse,
   ClustersResponse,
   HierarchyResponse,
   InsightsResponse,
   MapResponse,
   OverviewResponse,
-  RecentAnalysisResponse,
 } from '../../api/analysis.types'
 import { useAnalysisRun } from '../../hooks/useAnalysisRun'
 import {
@@ -37,7 +35,6 @@ import SelectionDetailsDrawer, {
   type SelectedEntityModel,
 } from './components/SelectionDetailsDrawer'
 import ClustersTab from '../../tabs/ClustersTab'
-import GranulateTab from '../../tabs/GranulateTab'
 import HierarchyTab from '../../tabs/HierarchyTab'
 import MapTab from '../../tabs/MapTab'
 import OverviewTab from '../../tabs/OverviewTab'
@@ -45,8 +42,8 @@ import './chat.css'
 
 const ALLOWED_TYPES = ['.csv']
 const POLL_INTERVAL_MS = 1500
-const POLL_TIMEOUT_MS = 120000
-const ARTIFACT_TIMEOUT_MS = 120000
+const POLL_TIMEOUT_MS = 600000
+const ARTIFACT_TIMEOUT_MS = 600000
 
 type ViewMode = 'chat' | 'analysis'
 
@@ -102,7 +99,6 @@ type AnalysisArtifacts = {
   insights: InsightsResponse | null
   map: MapResponse | null
   clusters: ClustersResponse | null
-  granulate: AnalysisGranulateResponse | null
   hierarchy: HierarchyResponse | null
 }
 
@@ -128,7 +124,7 @@ const RUN_STAGE_META: Record<RunStage, { label: string; detail: string; min: num
   clusters: { label: 'Clusters', detail: 'Grouping related items', min: 44, max: 60 },
   umap: { label: 'Map', detail: 'Projecting points for map view', min: 60, max: 76 },
   labeling: { label: 'Labeling', detail: 'Writing theme labels', min: 76, max: 88 },
-  granulate: { label: 'Granulate', detail: 'Producing sentiment/aspect summary', min: 88, max: 95 },
+  granulate: { label: 'Post-processing', detail: 'Final processing before overview', min: 88, max: 95 },
   overview: { label: 'Overview', detail: 'Finalizing overview artifacts', min: 95, max: 99 },
   completed: { label: 'Completed', detail: 'Analysis completed', min: 100, max: 100 },
   failed: { label: 'Failed', detail: 'Analysis finished with errors', min: 0, max: 100 },
@@ -145,7 +141,6 @@ function createEmptyArtifacts(): AnalysisArtifacts {
     insights: null,
     map: null,
     clusters: null,
-    granulate: null,
     hierarchy: null,
   }
 }
@@ -540,13 +535,12 @@ export default function Chat() {
   const [requestError, setRequestError] = useState('')
   const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(false)
   const [isLoadingRecent, setIsLoadingRecent] = useState(false)
-  const [isLoadingGranulateItems, setIsLoadingGranulateItems] = useState(false)
   const [displayProgress, setDisplayProgress] = useState(0)
   const [stageStartedAt, setStageStartedAt] = useState(() => Date.now())
   const [progressTicker, setProgressTicker] = useState(0)
 
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null)
-  const [recentAnalyses, setRecentAnalyses] = useState<RecentAnalysisResponse[]>([])
+  const [recentAnalyses, setRecentAnalyses] = useState<any[]>([])
   const [artifacts, setArtifacts] = useState<AnalysisArtifacts>(createEmptyArtifacts)
   const [activeSection, setActiveSection] = useState<AnalysisSectionId>('overview')
   const [selection, setSelection] = useState(createInitialAnalysisSelectionState)
@@ -648,8 +642,9 @@ export default function Chat() {
   const loadRecentAnalyses = useCallback(async () => {
     setIsLoadingRecent(true)
     try {
-      const recent = await getRecentAnalyses(8)
-      setRecentAnalyses(recent)
+      const data: any = await getRecentAnalyses(8)
+      const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []
+      setRecentAnalyses(items)
     } catch {
       setRecentAnalyses([])
     } finally {
@@ -666,12 +661,11 @@ export default function Chat() {
     setRequestError('')
 
     try {
-      const [overview, insights, map, clusters, granulate, hierarchy] = await Promise.all([
+      const [overview, insights, map, clusters, hierarchy] = await Promise.all([
         with409Retry(() => getAnalysisOverview(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisInsights(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisMap(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisClusters(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
-        with409Retry(() => getAnalysisGranulate(nextAnalysisId, true), ARTIFACT_TIMEOUT_MS),
         with409Retry(() => getAnalysisHierarchy(nextAnalysisId), ARTIFACT_TIMEOUT_MS),
       ])
 
@@ -680,7 +674,6 @@ export default function Chat() {
         insights,
         map,
         clusters,
-        granulate,
         hierarchy,
       })
     } catch (err) {
@@ -736,10 +729,6 @@ export default function Chat() {
         inputType: file ? 'csv' : 'text',
         file: file ?? undefined,
         text: file ? undefined : text,
-        options: {
-          granulate: true,
-          granulate_return_items: true,
-        },
       })
 
       setCurrentAnalysisId(nextAnalysisId)
@@ -760,29 +749,6 @@ export default function Chat() {
     resetRun,
     startAnalysis,
   ])
-
-  const loadGranulateItems = useCallback(async () => {
-    if (!currentAnalysisId) return
-
-    setIsLoadingGranulateItems(true)
-    setRequestError('')
-
-    try {
-      const granulate = await with409Retry(
-        () => getAnalysisGranulate(currentAnalysisId, true),
-        ARTIFACT_TIMEOUT_MS
-      )
-      setArtifacts((prev) => ({
-        ...prev,
-        granulate,
-      }))
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load item-level granulate.'
-      setRequestError(message)
-    } finally {
-      setIsLoadingGranulateItems(false)
-    }
-  }, [currentAnalysisId])
 
   const retryCurrentAnalysis = useCallback(() => {
     if (!currentAnalysisId) return
@@ -839,8 +805,23 @@ export default function Chat() {
   }, [selectedEntity])
 
   const runStatus = useMemo(() => {
-    const stage = status?.progress.stage as RunStage | undefined
-    const backendPct = clampProgress(status?.progress.pct ?? 0)
+    const progress: AnalysisStatusResponse['progress'] = status?.progress ?? { stage: 'queued', pct: 0 }
+    const stage = status?.progress?.stage as RunStage | undefined
+    const backendPct = clampProgress(progress?.pct ?? 0)
+    const stageLabel = typeof progress?.stage_label === 'string' ? progress.stage_label.trim() : ''
+    const backendMessage = typeof progress?.message === 'string' ? progress.message.trim() : ''
+    const hasCounterProgress =
+      typeof progress?.current === 'number' &&
+      Number.isFinite(progress.current) &&
+      typeof progress?.total === 'number' &&
+      Number.isFinite(progress.total) &&
+      progress.total > 0
+    const roundedCurrent = hasCounterProgress ? Math.max(0, Math.round(progress!.current!)) : 0
+    const roundedTotal = hasCounterProgress ? Math.max(1, Math.round(progress!.total!)) : 0
+    const hasStagePct = typeof progress?.stage_pct === 'number' && Number.isFinite(progress.stage_pct)
+    const boundedStagePct = hasStagePct ? clampProgress(progress!.stage_pct!) : 0
+    const hasElapsedSec = typeof progress?.elapsed_sec === 'number' && Number.isFinite(progress.elapsed_sec)
+    const elapsedSecFromBackend = hasElapsedSec ? Math.max(0, progress!.elapsed_sec!) : null
 
     if (!stage) {
       if (isLoadingArtifacts && !isRunning) {
@@ -875,11 +856,15 @@ export default function Chat() {
 
     const meta = RUN_STAGE_META[stage]
     const isTerminal = stage === 'completed' || stage === 'failed'
-    const elapsedSec = Math.max(0, (Date.now() - stageStartedAt) / 1000)
+    const elapsedSec = elapsedSecFromBackend ?? Math.max(0, (Date.now() - stageStartedAt) / 1000)
     const stageSpan = Math.max(meta.max - meta.min - 0.6, 0)
     const synthetic = meta.min + Math.min(elapsedSec * 1.2, stageSpan)
     const boundedBackend = Math.max(meta.min, Math.min(meta.max, backendPct))
-    let targetProgress = Math.max(boundedBackend, synthetic)
+    const fromStagePct =
+      hasStagePct && stage !== 'completed' && stage !== 'failed'
+        ? meta.min + (Math.max(meta.max - meta.min, 0) * boundedStagePct) / 100
+        : 0
+    let targetProgress = Math.max(boundedBackend, synthetic, fromStagePct)
 
     if (stage === 'completed') {
       targetProgress = 100
@@ -889,11 +874,22 @@ export default function Chat() {
 
     const activeStageCount = RUN_STAGES.length - 2
     const stepIndex = Math.max(0, RUN_STAGES.indexOf(stage as RunStage))
-    const stepText = isTerminal ? 'Done' : `Step ${Math.min(stepIndex + 1, activeStageCount)}/${activeStageCount}`
+    const fallbackStepText = isTerminal ? 'Done' : `Step ${Math.min(stepIndex + 1, activeStageCount)}/${activeStageCount}`
+    const liveProgressParts: string[] = []
+    if (hasCounterProgress) {
+      liveProgressParts.push(`${roundedCurrent}/${roundedTotal}`)
+    }
+    if (hasStagePct) {
+      liveProgressParts.push(`Stage ${Math.round(boundedStagePct)}%`)
+    }
+    if (hasElapsedSec) {
+      liveProgressParts.push(`${Math.round(elapsedSec)}s`)
+    }
+    const stepText = liveProgressParts.length > 0 ? liveProgressParts.join(' | ') : fallbackStepText
 
     return {
-      title: meta.label,
-      detail: meta.detail,
+      title: stageLabel || meta.label,
+      detail: backendMessage || meta.detail,
       targetProgress,
       stepText,
       indeterminate: false,
@@ -901,10 +897,10 @@ export default function Chat() {
   }, [isLoadingArtifacts, isRunning, progressTicker, stageStartedAt, status])
 
   useEffect(() => {
-    const stage = status?.progress.stage
+    const stage = status?.progress?.stage
     if (!stage) return
     setStageStartedAt(Date.now())
-  }, [status?.progress.stage])
+  }, [status?.progress?.stage])
 
   useEffect(() => {
     if (!isRunning && !isLoadingArtifacts) return
@@ -936,6 +932,7 @@ export default function Chat() {
 
   const activeError = requestError || runError
   const isDrawerVisible = viewMode === 'analysis' && Boolean(selectedEntity)
+  const recentList = Array.isArray(recentAnalyses) ? recentAnalyses : []
 
   return (
     <div className="chat-page">
@@ -1087,7 +1084,7 @@ export default function Chat() {
 
                 {!isRunning && !isLoadingArtifacts && hasAnalysisData && (
                   <p className="chat-run-status" role="status">
-                    Analysis ready. Open <strong>Analysis</strong> to explore themes, map, aspects, and tree.
+                    Analysis ready. Open <strong>Analysis</strong> to explore themes, map, and tree.
                   </p>
                 )}
 
@@ -1135,14 +1132,14 @@ export default function Chat() {
                   </button>
                 </div>
 
-                {recentAnalyses.length === 0 && (
+                {recentList.length === 0 && (
                   <p className="chat-muted-text">
                     {isLoadingRecent ? 'Loading recent analyses...' : 'No recent analyses available yet.'}
                   </p>
                 )}
 
                 <div className="chat-recent-list">
-                  {recentAnalyses.map((item) => (
+                  {recentList.map((item) => (
                     <button
                       key={item.analysis_id}
                       type="button"
@@ -1238,23 +1235,9 @@ export default function Chat() {
                   />
                 )}
 
-                {activeSection === 'sentiment' && (
-                  <GranulateTab
-                    data={artifacts.granulate}
-                    mapData={artifacts.map}
-                    selectedClusterId={selectedClusterId}
-                    selectedPointId={selectedPointId}
-                    onSelectPoint={selectPoint}
-                    isLoading={isRunning || isLoadingArtifacts}
-                    error={activeError}
-                    isLoadingItems={isLoadingGranulateItems}
-                    onRetry={retryCurrentAnalysis}
-                    onLoadItems={loadGranulateItems}
-                  />
-                )}
-
                 {activeSection === 'tree' && (
                   <HierarchyTab
+                    analysisId={currentAnalysisId}
                     data={artifacts.hierarchy}
                     mapData={artifacts.map}
                     selectedClusterId={selectedClusterId}

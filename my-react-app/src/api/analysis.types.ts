@@ -58,6 +58,12 @@ export interface AnalysisStatusResponse {
       | 'completed'
       | 'failed'
     pct: number
+    stage_label?: string
+    message?: string
+    current?: number
+    total?: number
+    stage_pct?: number
+    elapsed_sec?: number
   }
   error: string | null
 }
@@ -245,4 +251,9 @@ export interface HierarchyResponse {
     node_id: string
     cluster_id: number
   }>
+}
+
+export interface HierarchyLabelsResponse {
+  labels: Record<string, string>
+  updated: number
 }

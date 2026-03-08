@@ -8,7 +8,7 @@ type UseAnalysisPollingOptions = {
 }
 
 const DEFAULT_INTERVAL_MS = 1500
-const DEFAULT_TIMEOUT_MS = 120000
+const DEFAULT_TIMEOUT_MS = 600000
 
 export function useAnalysisPolling({
   intervalMs = DEFAULT_INTERVAL_MS,
