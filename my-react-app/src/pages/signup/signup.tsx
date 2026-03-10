@@ -40,7 +40,7 @@ export default function Signup() {
         <span className="auth-divider-line" />
       </div>
 
-      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); navigate('/chat'); }}>
+      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); localStorage.setItem('granulate_auth', '1'); navigate('/chat'); }}>
         <label className="auth-field">
           <span className="auth-label">Name</span>
           <input className="auth-input" type="text" placeholder="Your full name" autoComplete="name" />

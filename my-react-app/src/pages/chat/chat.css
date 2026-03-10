@@ -203,6 +203,12 @@
 
 .chat-input-wrap {
   transition: border-color var(--ease-fast), box-shadow var(--ease-fast);
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.chat-input-wrap > * {
+  width: 100%;
 }
 
 .chat-input-wrap--dragging {
@@ -422,6 +428,8 @@
 .chat-recent-panel {
   display: grid;
   gap: var(--space-3);
+  max-width: 780px;
+  margin: 0 auto;
 }
 
 .chat-recent-head {
