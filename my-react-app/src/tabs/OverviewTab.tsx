@@ -38,6 +38,16 @@ export default function OverviewTab({
     return (insights?.key_findings ?? []).filter((item) => item.trim().length > 0)
   }, [insights?.key_findings])
 
+  const overallSummary = insights?.overall_summary?.trim() ?? ''
+  const overallSummarySource = insights?.overall_summary_source
+  const overallSummaryTitle = overallSummarySource === 'llm' ? 'AI summary' : 'Summary'
+  const overallSummaryBadge =
+    overallSummarySource === 'heuristic'
+      ? 'Heuristic fallback'
+      : overallSummarySource === 'llm'
+        ? 'LLM'
+        : 'Generated'
+
   return (
     <ApiState
       isLoading={isLoading}
@@ -63,6 +73,21 @@ export default function OverviewTab({
                 </article>
               ))}
             </div>
+          )}
+          {overallSummary && (
+            <article className="chat-overview-summary" aria-label="Overall summary">
+              <div className="chat-overview-summary-head">
+                <h4 className="chat-overview-summary-title">{overallSummaryTitle}</h4>
+                <span
+                  className={`chat-overview-summary-badge chat-overview-summary-badge--${
+                    overallSummarySource ?? 'unknown'
+                  }`}
+                >
+                  {overallSummaryBadge}
+                </span>
+              </div>
+              <p className="chat-overview-summary-text">{overallSummary}</p>
+            </article>
           )}
         </section>
 

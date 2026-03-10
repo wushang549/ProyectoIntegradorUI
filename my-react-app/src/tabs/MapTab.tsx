@@ -37,14 +37,25 @@ type ClusterVisual = {
   shape: MapShape
 }
 
+type AxisTick = {
+  value: number
+  label: string
+  plotPos: number
+}
+
 const PLOT_WIDTH = 980
 const PLOT_HEIGHT = 560
 const PLOT_PADDING = 32
 const DOT_SAFE_PADDING = 10
+const AXIS_TICK_COUNT = 5
 const TOOLTIP_OFFSET = 14
 const TOOLTIP_EDGE_GAP = 8
 const TOOLTIP_MAX_WIDTH = 340
 const TOOLTIP_ESTIMATED_HEIGHT = 180
+const PLOT_LEFT = PLOT_PADDING + DOT_SAFE_PADDING
+const PLOT_RIGHT = PLOT_WIDTH - PLOT_PADDING - DOT_SAFE_PADDING
+const PLOT_TOP = PLOT_PADDING + DOT_SAFE_PADDING
+const PLOT_BOTTOM = PLOT_HEIGHT - PLOT_PADDING - DOT_SAFE_PADDING
 
 const MAP_COLOR_PALETTE = [
   '#e11d48',
@@ -90,6 +101,21 @@ function safeNumeric(value: unknown) {
 function clamp(value: number, min: number, max: number) {
   if (max <= min) return min
   return Math.min(Math.max(value, min), max)
+}
+
+function formatAxisValue(value: number) {
+  if (!Number.isFinite(value)) return '-'
+
+  const absolute = Math.abs(value)
+  const digits = absolute >= 100 ? 0 : absolute >= 10 ? 1 : absolute >= 1 ? 2 : 3
+  return value.toFixed(digits).replace(/\.?0+$/, '')
+}
+
+function buildTickValues(min: number, max: number, count: number) {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [] as number[]
+  if (count <= 1 || Math.abs(max - min) < Number.EPSILON) return [min]
+
+  return Array.from({ length: count }, (_, index) => min + ((max - min) * index) / (count - 1))
 }
 
 function borderFromAccent(accent: string) {
@@ -203,8 +229,8 @@ export default function MapTab({
     return map
   }, [data?.clusters])
 
-  const positionedPoints = useMemo(() => {
-    if (!data || data.points.length === 0) return [] as PositionedPoint[]
+  const mapBounds = useMemo(() => {
+    if (!data || data.points.length === 0) return null
 
     let minX = Number.POSITIVE_INFINITY
     let maxX = Number.NEGATIVE_INFINITY
@@ -218,6 +244,14 @@ export default function MapTab({
       maxY = Math.max(maxY, point.y)
     }
 
+    return { minX, maxX, minY, maxY }
+  }, [data])
+
+  const positionedPoints = useMemo(() => {
+    if (!data || !mapBounds) return [] as PositionedPoint[]
+
+    const { minX, maxX, minY, maxY } = mapBounds
+
     return data.points.map((point) => ({
       ...point,
       clusterLabel:
@@ -226,18 +260,46 @@ export default function MapTab({
         point.x,
         minX,
         maxX,
-        PLOT_PADDING + DOT_SAFE_PADDING,
-        PLOT_WIDTH - PLOT_PADDING - DOT_SAFE_PADDING
+        PLOT_LEFT,
+        PLOT_RIGHT
       ),
       plotY: normalize(
         point.y,
         minY,
         maxY,
-        PLOT_HEIGHT - PLOT_PADDING - DOT_SAFE_PADDING,
-        PLOT_PADDING + DOT_SAFE_PADDING
+        PLOT_BOTTOM,
+        PLOT_TOP
       ),
     }))
-  }, [clusterLabelById, data])
+  }, [clusterLabelById, data, mapBounds])
+
+  const axisTicks = useMemo(() => {
+    if (!mapBounds) {
+      return {
+        x: [] as AxisTick[],
+        y: [] as AxisTick[],
+      }
+    }
+
+    const xTicks = buildTickValues(mapBounds.minX, mapBounds.maxX, AXIS_TICK_COUNT).map((value) => ({
+      value,
+      label: formatAxisValue(value),
+      plotPos: normalize(value, mapBounds.minX, mapBounds.maxX, PLOT_LEFT, PLOT_RIGHT),
+    }))
+    const yTicks = buildTickValues(mapBounds.minY, mapBounds.maxY, AXIS_TICK_COUNT).map((value) => ({
+      value,
+      label: formatAxisValue(value),
+      plotPos: normalize(value, mapBounds.minY, mapBounds.maxY, PLOT_BOTTOM, PLOT_TOP),
+    }))
+
+    return {
+      x: xTicks,
+      y: yTicks,
+    }
+  }, [mapBounds])
+
+  const xAxisLabel = data?.advanced.umap_scaled ? 'Scaled UMAP-1' : 'UMAP-1'
+  const yAxisLabel = data?.advanced.umap_scaled ? 'Scaled UMAP-2' : 'UMAP-2'
 
   const pointById = useMemo(() => {
     const map = new Map<string, PositionedPoint>()
@@ -348,6 +410,82 @@ export default function MapTab({
                 className="chat-map-plot-bg"
               />
 
+              <g aria-hidden>
+                {axisTicks.x.map((tick) => (
+                  <line
+                    key={`grid-x-${tick.value}`}
+                    x1={tick.plotPos}
+                    y1={PLOT_TOP}
+                    x2={tick.plotPos}
+                    y2={PLOT_BOTTOM}
+                    className="chat-map-grid-line"
+                  />
+                ))}
+                {axisTicks.y.map((tick) => (
+                  <line
+                    key={`grid-y-${tick.value}`}
+                    x1={PLOT_LEFT}
+                    y1={tick.plotPos}
+                    x2={PLOT_RIGHT}
+                    y2={tick.plotPos}
+                    className="chat-map-grid-line"
+                  />
+                ))}
+              </g>
+
+              <g aria-hidden>
+                <line x1={PLOT_LEFT} y1={PLOT_BOTTOM} x2={PLOT_RIGHT} y2={PLOT_BOTTOM} className="chat-map-axis-line" />
+                <line x1={PLOT_LEFT} y1={PLOT_TOP} x2={PLOT_LEFT} y2={PLOT_BOTTOM} className="chat-map-axis-line" />
+
+                {axisTicks.x.map((tick) => (
+                  <g key={`axis-x-${tick.value}`}>
+                    <line
+                      x1={tick.plotPos}
+                      y1={PLOT_BOTTOM}
+                      x2={tick.plotPos}
+                      y2={PLOT_BOTTOM + 6}
+                      className="chat-map-axis-tick"
+                    />
+                    <text x={tick.plotPos} y={PLOT_BOTTOM + 18} textAnchor="middle" className="chat-map-axis-value">
+                      {tick.label}
+                    </text>
+                  </g>
+                ))}
+
+                {axisTicks.y.map((tick) => (
+                  <g key={`axis-y-${tick.value}`}>
+                    <line
+                      x1={PLOT_LEFT - 6}
+                      y1={tick.plotPos}
+                      x2={PLOT_LEFT}
+                      y2={tick.plotPos}
+                      className="chat-map-axis-tick"
+                    />
+                    <text x={PLOT_LEFT - 10} y={tick.plotPos + 4} textAnchor="end" className="chat-map-axis-value">
+                      {tick.label}
+                    </text>
+                  </g>
+                ))}
+
+                <text
+                  x={(PLOT_LEFT + PLOT_RIGHT) / 2}
+                  y={PLOT_HEIGHT - 8}
+                  textAnchor="middle"
+                  className="chat-map-axis-label"
+                >
+                  {xAxisLabel}
+                </text>
+                <text
+                  x={14}
+                  y={(PLOT_TOP + PLOT_BOTTOM) / 2}
+                  textAnchor="middle"
+                  transform={`rotate(-90 14 ${(PLOT_TOP + PLOT_BOTTOM) / 2})`}
+                  className="chat-map-axis-label"
+                >
+                  {yAxisLabel}
+                </text>
+              </g>
+
               {positionedPoints.map((point) => {
                 const visual = clusterVisualById.get(point.cluster_id) ?? clusterVisualForIndex(0)
                 const matchesSearch = !searchQuery || point.preview.toLowerCase().includes(searchQuery)
@@ -391,14 +529,6 @@ export default function MapTab({
               <div className="chat-map-tooltip" style={{ left: tooltipPos.x, top: tooltipPos.y }} role="tooltip">
                 <p className="chat-map-tooltip-theme">{hoveredPoint.clusterLabel}</p>
                 <p className="chat-map-tooltip-text">{hoveredPoint.preview}</p>
-                {Object.entries(hoveredPoint.metadata ?? {})
-                  .filter(([, value]) => value !== null && value !== undefined)
-                  .slice(0, 2)
-                  .map(([key, value]) => (
-                    <p key={`meta-${hoveredPoint.id}-${key}`} className="chat-map-tooltip-meta">
-                      {key}: {String(value)}
-                    </p>
-                  ))}
               </div>
             )}
           </div>

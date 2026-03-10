@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import AdvancedSection from '../../../components/common/AdvancedSection'
 import ExpandableText from '../../../components/common/ExpandableText'
+import { formatMetadataValue } from '../../../utils/metadata'
 import type { AnalysisSectionId } from '../analysisSections'
 
 export type DrawerExampleItem = {
@@ -142,7 +143,8 @@ export default function SelectionDetailsDrawer({
         <div className="chat-list-grid">
           {entity.exampleItems.map((item) => {
             const metadataRows = Object.entries(item.metadata ?? {})
-              .filter(([, value]) => value !== null && value !== undefined && String(value).trim().length > 0)
+              .map(([key, value]) => [key, formatMetadataValue(value)] as const)
+              .filter(([, value]) => value.length > 0)
               .slice(0, 3)
 
             return (
@@ -170,7 +172,7 @@ export default function SelectionDetailsDrawer({
                 {metadataRows.length > 0 && (
                   <div className="chat-drawer-example-meta">
                     {metadataRows.map(([key, value]) => (
-                      <span key={`${item.key}-${key}`}>{key}: {String(value)}</span>
+                      <span key={`${item.key}-${key}`}>{key}: {value}</span>
                     ))}
                   </div>
                 )}

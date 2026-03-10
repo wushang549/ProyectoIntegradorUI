@@ -7,18 +7,23 @@ import {
   getAnalysisClusters,
   getAnalysisHierarchy,
   getAnalysisInsights,
+  getAnalysisModels,
   getAnalysisMap,
   getAnalysisOverview,
   getRecentAnalyses,
   wait,
 } from '../../api/analysis.client'
 import type {
+  AnalysisModelsResponse,
   AnalysisStatusResponse,
   ClustersResponse,
   HierarchyResponse,
   InsightsResponse,
   MapResponse,
+  OllamaModel,
   OverviewResponse,
+  RecentAnalysesResponse,
+  RecentAnalysisResponse,
 } from '../../api/analysis.types'
 import { useAnalysisRun } from '../../hooks/useAnalysisRun'
 import {
@@ -102,6 +107,28 @@ type AnalysisArtifacts = {
   hierarchy: HierarchyResponse | null
 }
 
+function resolveDefaultModelName(response: AnalysisModelsResponse) {
+  const explicitDefault = response.default_model?.trim()
+  if (explicitDefault) {
+    return explicitDefault
+  }
+
+  const flaggedDefault = response.models.find((model) => model.is_default)?.name?.trim()
+  if (flaggedDefault) {
+    return flaggedDefault
+  }
+
+  return response.models[0]?.name?.trim() ?? ''
+}
+
+function normalizeRecentAnalyses(response: RecentAnalysesResponse): RecentAnalysisResponse[] {
+  if (Array.isArray(response)) {
+    return response
+  }
+
+  return Array.isArray(response.items) ? response.items : []
+}
+
 const RUN_STAGES = [
   'queued',
   'embeddings',
@@ -154,6 +181,14 @@ function formatDateTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
+}
+
+function formatRawStageLabel(rawStage: string) {
+  const normalized = rawStage.trim().toLowerCase()
+  if (!normalized) return ''
+  if (normalized === 'ai_summary') return 'AI Summary'
+
+  return normalized.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 /* Dots arranged in concentric rings to form a circle */
@@ -535,12 +570,17 @@ export default function Chat() {
   const [requestError, setRequestError] = useState('')
   const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(false)
   const [isLoadingRecent, setIsLoadingRecent] = useState(false)
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [displayProgress, setDisplayProgress] = useState(0)
   const [stageStartedAt, setStageStartedAt] = useState(() => Date.now())
   const [progressTicker, setProgressTicker] = useState(0)
+  const [modelLoadError, setModelLoadError] = useState('')
+  const [availableModels, setAvailableModels] = useState<OllamaModel[]>([])
+  const [selectedModel, setSelectedModel] = useState('')
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
 
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null)
-  const [recentAnalyses, setRecentAnalyses] = useState<any[]>([])
+  const [recentAnalyses, setRecentAnalyses] = useState<RecentAnalysisResponse[]>([])
   const [artifacts, setArtifacts] = useState<AnalysisArtifacts>(createEmptyArtifacts)
   const [activeSection, setActiveSection] = useState<AnalysisSectionId>('overview')
   const [selection, setSelection] = useState(createInitialAnalysisSelectionState)
@@ -554,6 +594,7 @@ export default function Chat() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryInputRef = useRef<HTMLTextAreaElement>(null)
   const orbRef = useRef<HTMLDivElement>(null)
+  const modelPickerRef = useRef<HTMLDivElement>(null)
   const [mouseInOrb, setMouseInOrb] = useState<{ x: number; y: number } | null>(null)
 
   const handleOrbMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -639,12 +680,65 @@ export default function Chat() {
     }
   }, [analysisId])
 
+  const loadAnalysisModels = useCallback(async () => {
+    setIsLoadingModels(true)
+    setModelLoadError('')
+
+    try {
+      const response = await getAnalysisModels()
+      const models = Array.isArray(response.models) ? response.models : []
+      const defaultModel = resolveDefaultModelName({
+        ...response,
+        models,
+      })
+
+      setAvailableModels(models)
+      setSelectedModel((current) => {
+        if (current && models.some((model) => model.name === current)) {
+          return current
+        }
+        return defaultModel
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load models.'
+      setModelLoadError(message)
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadAnalysisModels()
+  }, [loadAnalysisModels])
+
+  useEffect(() => {
+    if (!isModelMenuOpen) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!modelPickerRef.current?.contains(event.target as Node)) {
+        setIsModelMenuOpen(false)
+      }
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsModelMenuOpen(false)
+      }
+    }
+
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [isModelMenuOpen])
+
   const loadRecentAnalyses = useCallback(async () => {
     setIsLoadingRecent(true)
     try {
-      const data: any = await getRecentAnalyses(8)
-      const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []
-      setRecentAnalyses(items)
+      const data = await getRecentAnalyses(8)
+      setRecentAnalyses(normalizeRecentAnalyses(data))
     } catch {
       setRecentAnalyses([])
     } finally {
@@ -718,6 +812,7 @@ export default function Chat() {
     setSelection(createInitialAnalysisSelectionState())
     setActiveSection('overview')
     setIsDrawerOpen(false)
+    setIsModelMenuOpen(false)
     setViewMode('chat')
     resetRun()
     setDisplayProgress(0)
@@ -729,6 +824,11 @@ export default function Chat() {
         inputType: file ? 'csv' : 'text',
         file: file ?? undefined,
         text: file ? undefined : text,
+        options: selectedModel
+          ? {
+              llm_model: selectedModel,
+            }
+          : undefined,
       })
 
       setCurrentAnalysisId(nextAnalysisId)
@@ -747,6 +847,7 @@ export default function Chat() {
     loadRecentAnalyses,
     query,
     resetRun,
+    selectedModel,
     startAnalysis,
   ])
 
@@ -807,6 +908,8 @@ export default function Chat() {
   const runStatus = useMemo(() => {
     const progress: AnalysisStatusResponse['progress'] = status?.progress ?? { stage: 'queued', pct: 0 }
     const stage = status?.progress?.stage as RunStage | undefined
+    const rawStage = typeof progress?.raw_stage === 'string' ? progress.raw_stage.trim() : ''
+    const rawStageLabel = formatRawStageLabel(rawStage)
     const backendPct = clampProgress(progress?.pct ?? 0)
     const stageLabel = typeof progress?.stage_label === 'string' ? progress.stage_label.trim() : ''
     const backendMessage = typeof progress?.message === 'string' ? progress.message.trim() : ''
@@ -874,7 +977,11 @@ export default function Chat() {
 
     const activeStageCount = RUN_STAGES.length - 2
     const stepIndex = Math.max(0, RUN_STAGES.indexOf(stage as RunStage))
-    const fallbackStepText = isTerminal ? 'Done' : `Step ${Math.min(stepIndex + 1, activeStageCount)}/${activeStageCount}`
+    const fallbackStepText = isTerminal
+      ? 'Done'
+      : rawStageLabel && rawStageLabel !== meta.label
+        ? `${meta.label} / ${rawStageLabel}`
+        : `Step ${Math.min(stepIndex + 1, activeStageCount)}/${activeStageCount}`
     const liveProgressParts: string[] = []
     if (hasCounterProgress) {
       liveProgressParts.push(`${roundedCurrent}/${roundedTotal}`)
@@ -888,7 +995,7 @@ export default function Chat() {
     const stepText = liveProgressParts.length > 0 ? liveProgressParts.join(' | ') : fallbackStepText
 
     return {
-      title: stageLabel || meta.label,
+      title: stageLabel || rawStageLabel || meta.label,
       detail: backendMessage || meta.detail,
       targetProgress,
       stepText,
@@ -898,9 +1005,10 @@ export default function Chat() {
 
   useEffect(() => {
     const stage = status?.progress?.stage
-    if (!stage) return
+    const rawStage = status?.progress?.raw_stage
+    if (!stage && !rawStage) return
     setStageStartedAt(Date.now())
-  }, [status?.progress?.stage])
+  }, [status?.progress?.stage, status?.progress?.raw_stage])
 
   useEffect(() => {
     if (!isRunning && !isLoadingArtifacts) return
@@ -933,6 +1041,13 @@ export default function Chat() {
   const activeError = requestError || runError
   const isDrawerVisible = viewMode === 'analysis' && Boolean(selectedEntity)
   const recentList = Array.isArray(recentAnalyses) ? recentAnalyses : []
+  const modelMenuStatus = isLoadingModels
+    ? 'Loading available models...'
+    : availableModels.length > 0
+      ? `${availableModels.length} models available`
+      : modelLoadError
+        ? 'Could not load installed models'
+        : 'No models available'
 
   return (
     <div className="chat-page">
@@ -1050,6 +1165,94 @@ export default function Chat() {
                     <span>Attach CSV</span>
                   </button>
                   <span className="chat-toolbar-hint">CSV file or plain text</span>
+                  <div className="chat-model-picker" ref={modelPickerRef}>
+                    <button
+                      type="button"
+                      className="chat-model-trigger"
+                      aria-haspopup="listbox"
+                      aria-expanded={isModelMenuOpen}
+                      aria-label="Select analysis model"
+                      onClick={() => setIsModelMenuOpen((current) => !current)}
+                      disabled={isRunning || isLoadingArtifacts}
+                    >
+                      <span className="chat-model-trigger-copy">
+                        <span className="chat-model-trigger-label">Model</span>
+                        <span className="chat-model-trigger-value">
+                          {selectedModel || (isLoadingModels ? 'Loading...' : 'Backend default')}
+                        </span>
+                      </span>
+                      <ChatIconChevron open={isModelMenuOpen} />
+                    </button>
+
+                    {isModelMenuOpen && (
+                      <div className="chat-model-menu" role="listbox" aria-label="Available analysis models">
+                        <div className="chat-model-menu-head">
+                          <div className="chat-model-menu-copy">
+                            <p className="chat-model-menu-title">Available models</p>
+                            <p className="chat-model-menu-subtitle">{modelMenuStatus}</p>
+                          </div>
+                          <button
+                            type="button"
+                            className="chat-plain-btn chat-model-refresh"
+                            onClick={() => void loadAnalysisModels()}
+                            disabled={isLoadingModels}
+                          >
+                            {isLoadingModels ? 'Loading...' : 'Refresh'}
+                          </button>
+                        </div>
+
+                        {modelLoadError && (
+                          <p className="chat-model-menu-error" role="alert">
+                            {modelLoadError}
+                          </p>
+                        )}
+
+                        {!modelLoadError && isLoadingModels && availableModels.length === 0 && (
+                          <p className="chat-model-menu-empty">Loading installed models...</p>
+                        )}
+
+                        {!isLoadingModels && availableModels.length === 0 && !modelLoadError && (
+                          <p className="chat-model-menu-empty">No installed models were returned by the backend.</p>
+                        )}
+
+                        {availableModels.length > 0 && (
+                          <div className="chat-model-options">
+                            {availableModels.map((model) => {
+                              const isSelected = model.name === selectedModel
+
+                              return (
+                                <button
+                                  key={model.id || model.name}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isSelected}
+                                  className={`chat-model-option ${
+                                    isSelected ? 'chat-model-option--active' : ''
+                                  }`}
+                                  onClick={() => {
+                                    setSelectedModel(model.name)
+                                    setIsModelMenuOpen(false)
+                                  }}
+                                >
+                                  <div className="chat-model-option-main">
+                                    <span className="chat-model-option-name">{model.name}</span>
+                                    {model.is_default && (
+                                      <span className="chat-model-option-badge">Default</span>
+                                    )}
+                                  </div>
+                                  <div className="chat-model-option-meta">
+                                    <span>{model.size}</span>
+                                    <span>{model.modified}</span>
+                                    <span>{model.id}</span>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="chat-send-btn"
@@ -1335,6 +1538,25 @@ function ChatIconSend() {
     >
       <line x1="22" y1="2" x2="11" y2="13" />
       <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  )
+}
+
+function ChatIconChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`chat-model-trigger-chevron ${open ? 'chat-model-trigger-chevron--open' : ''}`}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <polyline points="6 9 12 15 18 9" />
     </svg>
   )
 }

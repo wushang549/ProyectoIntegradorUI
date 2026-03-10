@@ -1,5 +1,6 @@
 import type {
   AnalysisGranulateResponse,
+  AnalysisModelsResponse,
   AnalysisStatusResponse,
   ClustersResponse,
   CreateAnalysisRequest,
@@ -9,7 +10,7 @@ import type {
   InsightsResponse,
   MapResponse,
   OverviewResponse,
-  RecentAnalysisResponse,
+  RecentAnalysesResponse,
 } from './analysis.types'
 
 const API_BASE_URL = 'http://127.0.0.1:8000/v1'
@@ -70,8 +71,12 @@ export async function createAnalysis(payload: CreateAnalysisRequest): Promise<Cr
   })
 }
 
-export async function getRecentAnalyses(limit = 10): Promise<RecentAnalysisResponse[]> {
-  return requestJson<RecentAnalysisResponse[]>(`/analysis/recent?limit=${limit}`)
+export async function getRecentAnalyses(limit = 10): Promise<RecentAnalysesResponse> {
+  return requestJson<RecentAnalysesResponse>(`/analysis/recent?limit=${limit}`)
+}
+
+export async function getAnalysisModels(): Promise<AnalysisModelsResponse> {
+  return requestJson<AnalysisModelsResponse>('/analysis/models')
 }
 
 export async function getAnalysisStatus(analysisId: string): Promise<AnalysisStatusResponse> {

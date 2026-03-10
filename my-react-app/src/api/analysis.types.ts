@@ -1,8 +1,20 @@
 export type AnalysisId = string
 export type AnalysisState = 'queued' | 'processing' | 'completed' | 'failed'
+export type AnalysisProgressStage =
+  | 'queued'
+  | 'embeddings'
+  | 'hierarchy'
+  | 'clusters'
+  | 'umap'
+  | 'labeling'
+  | 'granulate'
+  | 'overview'
+  | 'completed'
+  | 'failed'
 
 export interface AnalysisOptions {
   k_clusters?: number
+  llm_model?: string
   umap_n_neighbors?: number
   umap_min_dist?: number
   granulate?: boolean
@@ -35,28 +47,40 @@ export interface CreateAnalysisResponse {
   }
 }
 
+export interface OllamaModel {
+  name: string
+  id: string
+  size: string
+  modified: string
+  is_default: boolean
+}
+
+export interface AnalysisModelsResponse {
+  default_model: string
+  models: OllamaModel[]
+}
+
 export interface RecentAnalysisResponse {
   analysis_id: AnalysisId
   status: AnalysisState
   created_at: string
   item_count: number
+  stage?: AnalysisProgressStage
+  raw_stage?: string
 }
+
+export type RecentAnalysesResponse =
+  | RecentAnalysisResponse[]
+  | {
+      items?: RecentAnalysisResponse[]
+    }
 
 export interface AnalysisStatusResponse {
   analysis_id: AnalysisId
   status: AnalysisState
   progress: {
-    stage:
-      | 'queued'
-      | 'embeddings'
-      | 'hierarchy'
-      | 'clusters'
-      | 'umap'
-      | 'labeling'
-      | 'granulate'
-      | 'overview'
-      | 'completed'
-      | 'failed'
+    stage: AnalysisProgressStage
+    raw_stage?: string
     pct: number
     stage_label?: string
     message?: string
@@ -80,6 +104,9 @@ export interface OverviewResponse {
     clusters: number
     aspects: number
   }
+  runtime?: {
+    llm_model?: string
+  }
   top_clusters: Array<{
     cluster_id: number
     label: string
@@ -91,15 +118,21 @@ export interface OverviewResponse {
   timing: Record<string, number>
 }
 
+export type OverallSummarySource = 'llm' | 'heuristic'
+
+export interface InsightThemeSummary {
+  label: string
+  size: number
+  top_terms: string[]
+  examples: string[]
+}
+
 export interface InsightsResponse {
   key_findings: string[]
-  theme_summary: Array<{
-    label: string
-    size: number
-    top_terms: string[]
-    examples: string[]
-  }>
+  theme_summary: InsightThemeSummary[]
   quality_warnings: string[]
+  overall_summary?: string
+  overall_summary_source?: OverallSummarySource
 }
 
 export interface MapPoint {
