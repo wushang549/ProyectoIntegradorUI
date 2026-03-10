@@ -4,6 +4,7 @@ import type {
   ClustersResponse,
   CreateAnalysisRequest,
   CreateAnalysisResponse,
+  HierarchyLabelsResponse,
   HierarchyResponse,
   InsightsResponse,
   MapResponse,
@@ -57,9 +58,11 @@ export async function createAnalysis(payload: CreateAnalysisRequest): Promise<Cr
     formData.append('file', payload.file)
   }
 
-  if (payload.options) {
-    formData.append('options', JSON.stringify(payload.options))
+  const optionsWithGranulateItems = {
+    ...(payload.options ?? {}),
+    granulate_return_items: true,
   }
+  formData.append('options', JSON.stringify(optionsWithGranulateItems))
 
   return requestJson<CreateAnalysisResponse>('/analysis', {
     method: 'POST',
@@ -83,17 +86,25 @@ export async function getAnalysisInsights(analysisId: string): Promise<InsightsR
   return requestJson<InsightsResponse>(`/analysis/${analysisId}/insights`)
 }
 
-export async function getAnalysisMap(analysisId: string): Promise<MapResponse> {
-  return requestJson<MapResponse>(`/analysis/${analysisId}/map`)
+export async function getAnalysisMap(analysisId: string, kClusters?: number): Promise<MapResponse> {
+  const query =
+    typeof kClusters === 'number'
+      ? `?k_clusters=${Math.max(2, Math.min(100, Math.round(kClusters)))}`
+      : ''
+  return requestJson<MapResponse>(`/analysis/${analysisId}/map${query}`)
 }
 
-export async function getAnalysisClusters(analysisId: string): Promise<ClustersResponse> {
-  return requestJson<ClustersResponse>(`/analysis/${analysisId}/clusters`)
+export async function getAnalysisClusters(analysisId: string, kClusters?: number): Promise<ClustersResponse> {
+  const query =
+    typeof kClusters === 'number'
+      ? `?k_clusters=${Math.max(2, Math.min(100, Math.round(kClusters)))}`
+      : ''
+  return requestJson<ClustersResponse>(`/analysis/${analysisId}/clusters${query}`)
 }
 
 export async function getAnalysisGranulate(
   analysisId: string,
-  includeItems = false
+  includeItems = true
 ): Promise<AnalysisGranulateResponse> {
   return requestJson<AnalysisGranulateResponse>(
     `/analysis/${analysisId}/granulate?include_items=${includeItems ? 'true' : 'false'}`
@@ -102,6 +113,21 @@ export async function getAnalysisGranulate(
 
 export async function getAnalysisHierarchy(analysisId: string): Promise<HierarchyResponse> {
   return requestJson<HierarchyResponse>(`/analysis/${analysisId}/hierarchy`)
+}
+
+export async function labelAnalysisHierarchyNodes(
+  analysisId: string,
+  nodeIds: string[]
+): Promise<HierarchyLabelsResponse> {
+  return requestJson<HierarchyLabelsResponse>(`/analysis/${analysisId}/hierarchy/labels`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      node_ids: nodeIds,
+    }),
+  })
 }
 
 export function wait(ms: number) {

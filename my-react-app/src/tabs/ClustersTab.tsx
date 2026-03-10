@@ -4,7 +4,7 @@ import ApiState from '../components/common/ApiState'
 import AdvancedSection from '../components/common/AdvancedSection'
 import ExpandableText from '../components/common/ExpandableText'
 import SectionHeading from '../components/common/SectionHeading'
-import { getClusterStyle } from '../utils/insightsTheme'
+import ClustersThemeCards from '../components/themes/ClustersThemeCards'
 
 type ClusterSortMode = 'size' | 'alphabetical'
 
@@ -18,10 +18,6 @@ type ClustersTabProps = {
   isLoading: boolean
   error?: string
   onRetry: () => void
-}
-
-function normalizeLabel(value: string) {
-  return value.trim().toLowerCase()
 }
 
 export default function ClustersTab({
@@ -40,20 +36,11 @@ export default function ClustersTab({
   const [minClusterSize, setMinClusterSize] = useState(1)
   const [openItemsClusterId, setOpenItemsClusterId] = useState<number | null>(null)
   const [visibleItemsCount, setVisibleItemsCount] = useState(80)
-  const [expandedPreviewKeys, setExpandedPreviewKeys] = useState<Record<string, boolean>>({})
+  const [expandedItemKeys, setExpandedItemKeys] = useState<Record<string, boolean>>({})
 
   const maxClusterSize = useMemo(() => {
     const sizes = data?.clusters.map((cluster) => cluster.size) ?? []
     return sizes.length > 0 ? Math.max(...sizes) : 1
-  }, [data?.clusters])
-
-  const duplicateLabelCounts = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const cluster of data?.clusters ?? []) {
-      const key = normalizeLabel(cluster.label)
-      map.set(key, (map.get(key) ?? 0) + 1)
-    }
-    return map
   }, [data?.clusters])
 
   const query = search.trim().toLowerCase()
@@ -154,91 +141,18 @@ export default function ClustersTab({
 
           <p className="chat-muted-text">Showing {visibleClusters.length} themes.</p>
 
-          <div className="chat-theme-cards">
-            {visibleClusters.map((cluster) => {
-              const style = getClusterStyle(cluster.cluster_id)
-              const isActive = selectedClusterId === cluster.cluster_id
-              const representativeExamples = pointsByClusterId.get(cluster.cluster_id) ?? cluster.representatives
-              const normalizedLabel = normalizeLabel(cluster.label)
-              const hasDuplicateLabel = (duplicateLabelCounts.get(normalizedLabel) ?? 0) > 1
-
-              return (
-                <article
-                  key={cluster.cluster_id}
-                  className={`chat-theme-card ${isActive ? 'chat-theme-card--active' : ''}`}
-                  style={{ borderColor: isActive ? style.border : undefined }}
-                >
-                  <div className="chat-theme-card-head">
-                    <div>
-                      <p className="chat-card-title">{cluster.label}</p>
-                      {hasDuplicateLabel && (
-                        <p className="chat-muted-text">Cluster {cluster.cluster_id}</p>
-                      )}
-                    </div>
-                    <strong className="chat-theme-size chat-theme-size--fixed" style={{ color: style.accent }}>
-                      {cluster.size} calls
-                    </strong>
-                  </div>
-
-                  <div className="chat-theme-preview-list chat-card-scroll-list">
-                    {representativeExamples.map((rep) => {
-                      const previewKey = `theme-${cluster.cluster_id}-${rep.id}`
-                      return (
-                        <div
-                          key={rep.id}
-                          className="chat-theme-preview-item"
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => onSelectPoint(rep.id, cluster.cluster_id)}
-                          onKeyDown={(event) => handleItemKeyDown(event, rep.id, cluster.cluster_id)}
-                        >
-                          <ExpandableText
-                            text={rep.preview}
-                            expanded={Boolean(expandedPreviewKeys[previewKey])}
-                            onToggle={() =>
-                              setExpandedPreviewKeys((prev) => ({
-                                ...prev,
-                                [previewKey]: !prev[previewKey],
-                              }))
-                            }
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  <div className="chat-chip-row">
-                    {cluster.top_terms.slice(0, 8).map((term) => (
-                      <span key={`${cluster.cluster_id}-${term}`} className="chat-chip">
-                        {term}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="chat-theme-actions">
-                    <button
-                      type="button"
-                      className="chat-plain-btn chat-card-action"
-                      onClick={() => onSelectCluster(isActive ? null : cluster.cluster_id)}
-                    >
-                      {isActive ? 'Unselect theme' : 'Select theme'}
-                    </button>
-                    <button
-                      type="button"
-                      className="chat-plain-btn chat-card-action"
-                      onClick={() => {
-                        onSelectCluster(cluster.cluster_id)
-                        setOpenItemsClusterId(cluster.cluster_id)
-                        setVisibleItemsCount(80)
-                      }}
-                    >
-                      View items
-                    </button>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
+          <ClustersThemeCards
+            clusters={visibleClusters}
+            selectedClusterId={selectedClusterId}
+            pointsByClusterId={pointsByClusterId}
+            onSelectCluster={onSelectCluster}
+            onSelectPoint={onSelectPoint}
+            onViewItems={(clusterId) => {
+              onSelectCluster(clusterId)
+              setOpenItemsClusterId(clusterId)
+              setVisibleItemsCount(80)
+            }}
+          />
 
           {openItemsClusterId !== null && (
             <section className="chat-theme-items-panel">
@@ -259,9 +173,9 @@ export default function ClustersTab({
                   >
                     <ExpandableText
                       text={point.preview}
-                      expanded={Boolean(expandedPreviewKeys[`item-${point.id}`])}
+                      expanded={Boolean(expandedItemKeys[`item-${point.id}`])}
                       onToggle={() =>
-                        setExpandedPreviewKeys((prev) => ({
+                        setExpandedItemKeys((prev) => ({
                           ...prev,
                           [`item-${point.id}`]: !prev[`item-${point.id}`],
                         }))

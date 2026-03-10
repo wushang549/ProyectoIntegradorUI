@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { labelAnalysisHierarchyNodes } from '../../api/analysis.client'
 import type { HierarchyResponse } from '../../api/analysis.types'
 import {
   getClusterLinkColor,
@@ -8,6 +9,7 @@ import {
 } from '../../utils/insightsTheme'
 
 type DendrogramProps = {
+  analysisId: string | null
   hierarchy: HierarchyResponse
   selectedClusterId: number | null
   selectedPointId: string | null
@@ -41,6 +43,8 @@ const MAX_LEVEL_GAP_PX = 18
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 2.2
 const ZOOM_STEP = 0.05
+const LABEL_FETCH_DEBOUNCE_MS = 400
+const MAX_LABEL_REQUEST_NODES = 8
 
 type ClusterStyle = {
   link: string
@@ -77,6 +81,7 @@ function dominantClusterId(leaves: HierarchyLeaf[]): number | null {
 }
 
 export default function Dendrogram({
+  analysisId,
   hierarchy,
   selectedClusterId,
   selectedPointId,
@@ -90,6 +95,13 @@ export default function Dendrogram({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({})
   const [zoom, setZoom] = useState(1)
+  const [labelOverridesByNodeId, setLabelOverridesByNodeId] = useState<Record<string, string>>({})
+  const [viewportTick, setViewportTick] = useState(0)
+  const scrollWrapRef = useRef<HTMLDivElement | null>(null)
+  const lastCenteredLayoutRef = useRef<string | null>(null)
+  const labelCacheByAnalysisNodeRef = useRef<Map<string, string>>(new Map())
+  const inFlightLabelKeysRef = useRef<Set<string>>(new Set())
+  const scrollRafRef = useRef<number | null>(null)
 
   const nodes = hierarchy.nodes
   const rootId = hierarchy.root_id
@@ -442,6 +454,133 @@ export default function Dendrogram({
   const zoomedWidth = Math.max(420, Math.round(svgWidth * zoom))
   const zoomedHeight = Math.max(320, Math.round(SVG_HEIGHT * zoom))
 
+  useEffect(() => {
+    setLabelOverridesByNodeId({})
+  }, [analysisId])
+
+  const onViewportScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) return
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null
+      setViewportTick((prev) => prev + 1)
+    })
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current)
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    const layoutKey = `${rootId}:${leafOrder.length}`
+    if (lastCenteredLayoutRef.current === layoutKey) return
+
+    const wrap = scrollWrapRef.current
+    if (!wrap) return
+
+    lastCenteredLayoutRef.current = layoutKey
+    requestAnimationFrame(() => {
+      const maxScrollLeft = wrap.scrollWidth - wrap.clientWidth
+      wrap.scrollLeft = maxScrollLeft > 0 ? Math.round(maxScrollLeft / 2) : 0
+      setViewportTick((prev) => prev + 1)
+    })
+  }, [leafOrder.length, rootId, zoomedWidth])
+
+  const visibleInternalNodeIds = useMemo(() => {
+    const wrap = scrollWrapRef.current
+    if (!wrap) return [] as string[]
+
+    const viewLeft = wrap.scrollLeft
+    const viewTop = wrap.scrollTop
+    const viewRight = viewLeft + wrap.clientWidth
+    const viewBottom = viewTop + wrap.clientHeight
+    const scaleX = svgWidth > 0 ? zoomedWidth / svgWidth : 1
+    const scaleY = SVG_HEIGHT > 0 ? zoomedHeight / SVG_HEIGHT : 1
+    const viewportPadding = 24
+
+    const visible = Array.from(visibleGraph.visibleNodeIds)
+      .filter((nodeId) => {
+        const node = nodes[nodeId]
+        if (!node || node.children_ids.length === 0) return false
+        if (nodeId.startsWith('leaf_')) return false
+
+        const rawX = layout.xByNodeId.get(nodeId)
+        const rawY = layout.yByNodeId.get(nodeId)
+        if (typeof rawX !== 'number' || typeof rawY !== 'number') return false
+
+        const scaledX = rawX * scaleX
+        const scaledY = rawY * scaleY
+
+        return (
+          scaledX >= viewLeft - viewportPadding &&
+          scaledX <= viewRight + viewportPadding &&
+          scaledY >= viewTop - viewportPadding &&
+          scaledY <= viewBottom + viewportPadding
+        )
+      })
+      .sort((leftId, rightId) => (nodes[rightId]?.size ?? 0) - (nodes[leftId]?.size ?? 0))
+
+    return visible.slice(0, MAX_LABEL_REQUEST_NODES)
+  }, [layout.xByNodeId, layout.yByNodeId, nodes, svgWidth, visibleGraph.visibleNodeIds, viewportTick, zoomedHeight, zoomedWidth])
+
+  const visibleInternalNodeIdsKey = visibleInternalNodeIds.join('|')
+
+  useEffect(() => {
+    if (!analysisId) return
+    if (!visibleInternalNodeIdsKey) return
+
+    const candidates = visibleInternalNodeIds.filter((nodeId) => {
+      const cacheKey = `${analysisId}:${nodeId}`
+      return !labelCacheByAnalysisNodeRef.current.has(cacheKey) && !inFlightLabelKeysRef.current.has(cacheKey)
+    })
+    if (candidates.length === 0) return
+
+    const timer = setTimeout(async () => {
+      const batch = candidates.slice(0, MAX_LABEL_REQUEST_NODES)
+      const batchKeys = batch.map((nodeId) => `${analysisId}:${nodeId}`)
+      batchKeys.forEach((key) => inFlightLabelKeysRef.current.add(key))
+
+      try {
+        const response = await labelAnalysisHierarchyNodes(analysisId, batch)
+        const labels = response.labels ?? {}
+
+        setLabelOverridesByNodeId((prev) => {
+          let changed = false
+          const next = { ...prev }
+
+          for (const nodeId of batch) {
+            const cacheKey = `${analysisId}:${nodeId}`
+            const rawLabel = labels[nodeId]
+            const nextLabel = typeof rawLabel === 'string' ? rawLabel.trim() : ''
+            const fallbackLabel = (next[nodeId] ?? nodes[nodeId]?.label ?? '').trim()
+            const labelToCache = nextLabel || fallbackLabel
+
+            if (labelToCache) {
+              labelCacheByAnalysisNodeRef.current.set(cacheKey, labelToCache)
+            }
+
+            if (nextLabel && next[nodeId] !== nextLabel) {
+              next[nodeId] = nextLabel
+              changed = true
+            }
+          }
+
+          return changed ? next : prev
+        })
+      } catch {
+        // Silent fallback: keep existing labels from /hierarchy.
+      } finally {
+        batchKeys.forEach((key) => inFlightLabelKeysRef.current.delete(key))
+      }
+    }, LABEL_FETCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(timer)
+  }, [analysisId, nodes, visibleInternalNodeIds, visibleInternalNodeIdsKey])
+
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
       const leaves = descendantLeavesByNode.get(nodeId) ?? []
@@ -476,14 +615,14 @@ export default function Dendrogram({
     const descendants = descendantLeavesByNode.get(selectedNodeId) ?? []
     onInspectNode({
       nodeId: selectedNodeId,
-      label: humanThemeLabel(node.label, node.size),
+      label: humanThemeLabel(labelOverridesByNodeId[selectedNodeId] ?? node.label, node.size),
       size: node.size,
       height: node.height,
       dominantClusterId: dominantClusterId(descendants),
       descendantLeafCount: descendants.length,
       descendantLeafIds: descendants.map((leaf) => leaf.id),
     })
-  }, [descendantLeavesByNode, nodes, onInspectNode, selectedNodeId])
+  }, [descendantLeavesByNode, labelOverridesByNodeId, nodes, onInspectNode, selectedNodeId])
 
   useEffect(() => {
     if (!selectedPointId) return
@@ -533,7 +672,7 @@ export default function Dendrogram({
         </div>
       </div>
 
-      <div className="chat-dendrogram-wrap">
+      <div ref={scrollWrapRef} className="chat-dendrogram-wrap" onScroll={onViewportScroll}>
         <svg
           className="chat-dendrogram-svg"
           viewBox={`0 0 ${svgWidth} ${SVG_HEIGHT}`}
@@ -627,7 +766,11 @@ export default function Dendrogram({
             const labelAnchorRight = x > svgWidth - SVG_MARGIN - 160
             const labelX = labelAnchorRight ? -10 : 10
             const labelY = isLeaf ? -8 : -10
-            const displayLabel = humanThemeLabel(node.label, node.size)
+            const resolvedLabel = labelOverridesByNodeId[nodeId] ?? node.label
+            const displayLabel = humanThemeLabel(resolvedLabel, node.size)
+            const tooltipBase = resolvedLabel?.trim() || 'Theme'
+            const tooltipLabel =
+              /\(n=\s*\d+\)$/i.test(tooltipBase) ? tooltipBase : `${tooltipBase} (n=${node.size})`
 
             return (
               <g
@@ -660,11 +803,7 @@ export default function Dendrogram({
                     {displayLabel}
                   </text>
                 )}
-                <title>
-                  {leaf
-                    ? `${displayLabel} | leaf ${leaf.id} | cluster ${leaf.cluster_id}`
-                    : `${displayLabel} | size ${node.size} | merge distance ${node.height.toFixed(4)}`}
-                </title>
+                <title>{tooltipLabel}</title>
               </g>
             )
           })}

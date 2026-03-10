@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { InsightsResponse, OverviewResponse } from '../api/analysis.types'
 import ApiState from '../components/common/ApiState'
 import AdvancedSection from '../components/common/AdvancedSection'
-import ExpandableText from '../components/common/ExpandableText'
 import SectionHeading from '../components/common/SectionHeading'
-import { getClusterStyle } from '../utils/insightsTheme'
+import OverviewThemeCards from '../components/themes/OverviewThemeCards'
 
 type OverviewTabProps = {
   overview: OverviewResponse | null
@@ -22,23 +21,6 @@ function formatTimingKey(key: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
-function findClusterIdByInsightLabel(overview: OverviewResponse | null, label: string) {
-  if (!overview) return null
-
-  const normalized = label.trim().toLowerCase()
-  const exactMatches = overview.top_clusters.filter(
-    (cluster) => cluster.label.trim().toLowerCase() === normalized
-  )
-  if (exactMatches.length === 1) {
-    return exactMatches[0].cluster_id
-  }
-
-  const containsMatch = overview.top_clusters.find((cluster) =>
-    cluster.label.trim().toLowerCase().includes(normalized)
-  )
-  return containsMatch?.cluster_id ?? null
-}
-
 export default function OverviewTab({
   overview,
   insights,
@@ -48,8 +30,6 @@ export default function OverviewTab({
   onRetry,
   onSelectCluster,
 }: OverviewTabProps) {
-  const [expandedExampleKeys, setExpandedExampleKeys] = useState<Record<string, boolean>>({})
-
   const isEmpty = !insights && !overview
 
   const insightThemes = insights?.theme_summary ?? []
@@ -88,69 +68,12 @@ export default function OverviewTab({
 
         <section className="chat-overview-block">
           <h3 className="chat-card-title">Top themes</h3>
-          <div className="chat-main-theme-list">
-            {insightThemes.map((theme, index) => {
-              const clusterId = findClusterIdByInsightLabel(overview, theme.label)
-              const style = getClusterStyle(clusterId)
-              const isActive = clusterId !== null && selectedClusterId === clusterId
-              const exampleList = theme.examples
-
-              return (
-                <article
-                  key={`overview-theme-${index}`}
-                  className={`chat-main-theme-card ${isActive ? 'chat-main-theme-card--active' : ''}`}
-                  style={{ borderColor: isActive ? style.border : undefined }}
-                >
-                  <div className="chat-main-theme-head">
-                    <h4 className="chat-card-title">{theme.label}</h4>
-                    <strong className="chat-theme-size chat-theme-size--fixed" style={{ color: style.accent }}>
-                      {theme.size} calls
-                    </strong>
-                  </div>
-
-                  {exampleList.length > 0 && (
-                    <div className="chat-list-grid chat-card-scroll-list">
-                      {exampleList.map((example, exampleIndex) => {
-                        const key = `insight-${index}-${exampleIndex}`
-                        return (
-                          <div key={key} className="chat-list-item chat-list-item--small">
-                            <ExpandableText
-                              text={example}
-                              expanded={Boolean(expandedExampleKeys[key])}
-                              onToggle={() =>
-                                setExpandedExampleKeys((prev) => ({
-                                  ...prev,
-                                  [key]: !prev[key],
-                                }))
-                              }
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-
-                  <div className="chat-chip-row">
-                    {theme.top_terms.slice(0, 7).map((term) => (
-                      <span key={`${theme.label}-${term}`} className="chat-chip">
-                        {term}
-                      </span>
-                    ))}
-                  </div>
-
-                  {clusterId !== null && (
-                    <button
-                      type="button"
-                      className="chat-plain-btn chat-card-action chat-card-action--full"
-                      onClick={() => onSelectCluster(clusterId)}
-                    >
-                      Explore theme
-                    </button>
-                  )}
-                </article>
-              )
-            })}
-          </div>
+          <OverviewThemeCards
+            themes={insightThemes}
+            overview={overview}
+            selectedClusterId={selectedClusterId}
+            onSelectCluster={onSelectCluster}
+          />
         </section>
 
         {(insights?.quality_warnings.length ?? 0) > 0 && (

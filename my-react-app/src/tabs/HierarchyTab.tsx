@@ -7,6 +7,7 @@ import Dendrogram from '../components/hierarchy/Dendrogram'
 import { humanThemeLabel } from '../utils/insightsTheme'
 
 type HierarchyTabProps = {
+  analysisId: string | null
   data: HierarchyResponse | null
   mapData: MapResponse | null
   selectedClusterId: number | null
@@ -47,6 +48,7 @@ function similarityBand(node: HierarchyNode) {
 }
 
 export default function HierarchyTab({
+  analysisId,
   data,
   mapData,
   selectedClusterId,
@@ -181,6 +183,7 @@ export default function HierarchyTab({
             </p>
             <div className="chat-dendrogram-wrap">
               <Dendrogram
+                analysisId={analysisId}
                 hierarchy={data}
                 selectedClusterId={selectedClusterId}
                 selectedPointId={selectedPointId}

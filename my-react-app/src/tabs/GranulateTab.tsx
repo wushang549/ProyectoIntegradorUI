@@ -29,6 +29,12 @@ type SentimentAspectSummary = {
   weightedScore: number
 }
 
+type GranulateItem = NonNullable<AnalysisGranulateResponse['items']>[number]
+type GranulateItemSignal = {
+  aspect: string
+  excerpt: string
+}
+
 function sentimentTone(score: number) {
   if (score > 0.12) return 'positive'
   if (score < -0.12) return 'negative'
@@ -47,6 +53,111 @@ function aggregateSentimentScore(aspect: GranulateAspectAggregate) {
   if (typeof aspect.avg_sentiment === 'number') return aspect.avg_sentiment
   if (typeof aspect.direction_score === 'number') return aspect.direction_score
   return 0
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return 0
+  const total = values.reduce((sum, next) => sum + next, 0)
+  return total / values.length
+}
+
+function summaryCount(summary: GranulateItem['result']['aspect_summary'][string] | undefined) {
+  return isFiniteNumber(summary?.count) ? summary.count : 0
+}
+
+function summaryScore(summary: GranulateItem['result']['aspect_summary'][string] | undefined) {
+  if (isFiniteNumber(summary?.avg_sentiment_score)) return summary.avg_sentiment_score
+  if (isFiniteNumber(summary?.avg_sentiment)) return summary.avg_sentiment
+  return 0
+}
+
+function hasAspectSignal(item: GranulateItem, aspect: string) {
+  const summary = item.result.aspect_summary?.[aspect]
+  if (summaryCount(summary) > 0) return true
+  return (item.result.granules ?? []).some((granule) => granule.aspect === aspect)
+}
+
+function resolveItemSentimentScore(item: GranulateItem, selectedAspect: string | null) {
+  const granules = item.result.granules ?? []
+
+  if (selectedAspect) {
+    const aspectGranuleScores = granules
+      .filter((granule) => granule.aspect === selectedAspect && isFiniteNumber(granule.sentiment_score))
+      .map((granule) => granule.sentiment_score)
+    if (aspectGranuleScores.length > 0) {
+      return average(aspectGranuleScores)
+    }
+
+    return summaryScore(item.result.aspect_summary?.[selectedAspect])
+  }
+
+  const nonNeutralScores = granules
+    .map((granule) => granule.sentiment_score)
+    .filter((score) => isFiniteNumber(score) && Math.abs(score) > 0.001)
+  if (nonNeutralScores.length > 0) {
+    return average(nonNeutralScores)
+  }
+
+  const allGranuleScores = granules
+    .map((granule) => granule.sentiment_score)
+    .filter((score): score is number => isFiniteNumber(score))
+  if (allGranuleScores.length > 0) {
+    return average(allGranuleScores)
+  }
+
+  const summaries = item.result.aspect_summary ?? {}
+  const weightedEntries = Object.values(summaries)
+    .map((summary) => ({ count: summaryCount(summary), score: summaryScore(summary) }))
+    .filter((entry) => entry.count > 0)
+  if (weightedEntries.length === 0) return 0
+
+  const totalCount = weightedEntries.reduce((sum, entry) => sum + entry.count, 0)
+  if (totalCount <= 0) return 0
+
+  const weightedTotal = weightedEntries.reduce((sum, entry) => sum + entry.score * entry.count, 0)
+  return weightedTotal / totalCount
+}
+
+function formatAspectName(aspect: string) {
+  return aspect
+    .trim()
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function getSignalPriority(granule: GranulateItem['result']['granules'][number]) {
+  const sentiment = isFiniteNumber(granule.sentiment_score) ? Math.abs(granule.sentiment_score) : 0
+  const confidence = isFiniteNumber(granule.confidence) ? granule.confidence : 0
+  const similarity = isFiniteNumber(granule.similarity) ? granule.similarity : 0
+  return sentiment * 0.7 + confidence * 0.2 + similarity * 0.1
+}
+
+function resolvePrimarySignal(item: GranulateItem, selectedAspect: string | null): GranulateItemSignal | null {
+  const granules = item.result.granules ?? []
+  if (granules.length === 0) return null
+
+  const aspectScopedGranules =
+    selectedAspect !== null ? granules.filter((granule) => granule.aspect === selectedAspect) : granules
+  const withoutOther = aspectScopedGranules.filter((granule) => granule.aspect !== 'OTHER')
+  const candidateGranules = withoutOther.length > 0 ? withoutOther : aspectScopedGranules
+  if (candidateGranules.length === 0) return null
+
+  const topGranule = [...candidateGranules].sort((left, right) => {
+    return getSignalPriority(right) - getSignalPriority(left)
+  })[0]
+
+  const excerpt = (topGranule.excerpt ?? '').trim()
+  if (!excerpt) return null
+
+  return {
+    aspect: topGranule.aspect,
+    excerpt,
+  }
 }
 
 export default function GranulateTab({
@@ -116,9 +227,7 @@ export default function GranulateTab({
     const items = data?.items ?? []
 
     return items.filter((item) => {
-      const summaries = item.result.aspect_summary ?? {}
-
-      if (selectedAspect && !Object.prototype.hasOwnProperty.call(summaries, selectedAspect)) {
+      if (selectedAspect && !hasAspectSignal(item, selectedAspect)) {
         return false
       }
 
@@ -254,16 +363,8 @@ export default function GranulateTab({
               <div className="chat-theme-items-list" role="table" aria-label="Aspect examples">
                 {filteredItems.slice(0, visibleExamplesCount).map((item) => {
                   const clusterId = clusterByItemId.get(item.id)
-                  const summaries = item.result.aspect_summary ?? {}
-                  const aspectSummary = selectedAspect
-                    ? summaries[selectedAspect]
-                    : Object.values(summaries)[0]
-                  const score =
-                    typeof aspectSummary?.avg_sentiment_score === 'number'
-                      ? aspectSummary.avg_sentiment_score
-                      : typeof aspectSummary?.avg_sentiment === 'number'
-                        ? aspectSummary.avg_sentiment
-                        : 0
+                  const score = resolveItemSentimentScore(item, selectedAspect)
+                  const primarySignal = resolvePrimarySignal(item, selectedAspect)
 
                   return (
                     <div
@@ -288,10 +389,17 @@ export default function GranulateTab({
                           }))
                         }
                       />
-                      <span className="chat-theme-item-id">
-                        {sentimentLabel(score)} ({score.toFixed(2)})
-                        {clusterId !== undefined ? ` - Theme ${clusterId}` : ''}
-                      </span>
+                      <div className="chat-theme-item-meta">
+                        <span className="chat-theme-item-id">
+                          {sentimentLabel(score)} ({score.toFixed(2)})
+                          {clusterId !== undefined ? ` - Theme ${clusterId}` : ''}
+                        </span>
+                        {primarySignal && (
+                          <span className="chat-theme-item-signal">
+                            {formatAspectName(primarySignal.aspect)}: {primarySignal.excerpt}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
