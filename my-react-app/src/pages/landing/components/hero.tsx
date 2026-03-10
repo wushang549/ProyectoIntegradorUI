@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Play, TrendingUp, ArrowRight } from 'lucide-react'
 import './hero.css'
@@ -88,6 +89,10 @@ function HeroDashboard() {
 }
 
 export default function Hero() {
+  const tryForFreeTo = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('granulate_auth') ? '/chat' : '/login'
+  )[0]
+
   return (
     <section className="hero" id="hero">
       {/* Grid background */}
@@ -149,7 +154,10 @@ export default function Hero() {
 
           {/* CTAs */}
           <div className="hero__actions">
-            <Link className="hero__cta hero__cta--primary" to="/analysis">
+            <Link
+              className="hero__cta hero__cta--primary"
+              to={tryForFreeTo}
+            >
               Try for free
               <ArrowRight size={16} />
             </Link>
