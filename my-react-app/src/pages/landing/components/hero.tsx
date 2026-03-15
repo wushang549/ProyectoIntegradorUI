@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Play, TrendingUp, ArrowRight } from 'lucide-react'
+import { useAuth } from '../../../auth/AuthProvider'
 import './hero.css'
 
 function HeroDashboard() {
@@ -89,9 +89,8 @@ function HeroDashboard() {
 }
 
 export default function Hero() {
-  const tryForFreeTo = useState(() =>
-    typeof window !== 'undefined' && localStorage.getItem('granulate_auth') ? '/chat' : '/login'
-  )[0]
+  const { user } = useAuth()
+  const tryForFreeTo = user ? '/chat' : '/login'
 
   return (
     <section className="hero" id="hero">

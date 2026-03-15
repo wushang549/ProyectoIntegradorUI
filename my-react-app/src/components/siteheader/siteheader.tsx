@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logo from '../../assets/granulate-logo-new.png'
+import { useAuth } from '../../auth/AuthProvider'
 import './siteheader.css'
 
 const SECTION_IDS = ['features', 'how-it-works', 'example'] as const
@@ -11,6 +12,17 @@ export default function SiteHeader() {
   const [scrolled, setScrolled] = useState(false)
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, signOut } = useAuth()
+
+  const handleSignOut = async () => {
+    const error = await signOut()
+    if (error) {
+      return
+    }
+
+    navigate('/', { replace: true })
+  }
 
   useEffect(() => {
     setOpen(false)
@@ -102,16 +114,30 @@ export default function SiteHeader() {
 
         {/* Right Segment: Auth Actions */}
         <div className="site-header__segment site-header__segment--right">
-          <Link to="/login" className="btn-ghost">
-            Sign in
-          </Link>
+          {user ? (
+            <>
+              <Link to="/chat" className="btn-ghost">
+                Open workspace
+              </Link>
 
-          <Link to="/signup" className="btn-primary">
-            Create an Account
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </Link>
+              <button type="button" className="btn-primary" onClick={() => void handleSignOut()}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="btn-ghost">
+                Sign in
+              </Link>
+
+              <Link to="/signup" className="btn-primary">
+                Create an Account
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+              </Link>
+            </>
+          )}
 
           <button
             type="button"
@@ -138,12 +164,32 @@ export default function SiteHeader() {
             Use cases
           </a>
           <div className="mobile-menu__cta">
-            <Link to="/login" className="btn-ghost btn-ghost--full" onClick={() => setOpen(false)}>
-              Sign in
-            </Link>
-            <Link to="/signup" className="btn-primary btn-primary--full" onClick={() => setOpen(false)}>
-              Create an Account
-            </Link>
+            {user ? (
+              <>
+                <Link to="/chat" className="btn-ghost btn-ghost--full" onClick={() => setOpen(false)}>
+                  Open workspace
+                </Link>
+                <button
+                  type="button"
+                  className="btn-primary btn-primary--full"
+                  onClick={() => {
+                    setOpen(false)
+                    void handleSignOut()
+                  }}
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="btn-ghost btn-ghost--full" onClick={() => setOpen(false)}>
+                  Sign in
+                </Link>
+                <Link to="/signup" className="btn-primary btn-primary--full" onClick={() => setOpen(false)}>
+                  Create an Account
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </div>

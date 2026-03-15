@@ -5,10 +5,76 @@ import appleIcon from '../../assets/apple.png'
 import AuthLayout from '../auth/AuthLayout'
 import './signup.css'
 import granulateLogo from '../../assets/granulate-logo-new.png'
+import { useAuth } from '../../auth/AuthProvider'
+import { supabase, supabaseConfigError } from '../../auth/supabaseClient'
 
 export default function Signup() {
   const [showPassword, setShowPassword] = useState(false)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const navigate = useNavigate()
+  const { configError, isConfigured } = useAuth()
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setFormError('')
+
+    if (!name.trim() || !email.trim() || !password) {
+      setFormError('Complete your name, email, and password to create the account.')
+      return
+    }
+
+    if (password.length < 8) {
+      setFormError('Use a password with at least 8 characters.')
+      return
+    }
+
+    if (!acceptedTerms) {
+      setFormError('Accept the terms to continue.')
+      return
+    }
+
+    if (!isConfigured || !supabase) {
+      setFormError(configError ?? supabaseConfigError ?? 'Supabase is not configured.')
+      return
+    }
+
+    setIsSubmitting(true)
+
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: name.trim(),
+        },
+      },
+    })
+
+    setIsSubmitting(false)
+
+    if (error) {
+      setFormError(error.message)
+      return
+    }
+
+    if (data.session) {
+      navigate('/chat', { replace: true })
+      return
+    }
+
+    navigate('/login', {
+      replace: true,
+      state: {
+        kind: 'success',
+        message: 'Account created. Check your email to confirm the address, then sign in.',
+      },
+    })
+  }
 
   return (
     <AuthLayout
@@ -24,11 +90,11 @@ export default function Signup() {
       <p className="auth-subtitle">Enter your credentials to create your account.</p>
 
       <div className="auth-sso-row">
-        <button className="auth-sso-btn" type="button">
+        <button className="auth-sso-btn" type="button" disabled>
           <img className="auth-sso-icon" src={googleIcon} alt="" />
           Google
         </button>
-        <button className="auth-sso-btn" type="button">
+        <button className="auth-sso-btn" type="button" disabled>
           <img className="auth-sso-icon" src={appleIcon} alt="" />
           Apple
         </button>
@@ -40,15 +106,35 @@ export default function Signup() {
         <span className="auth-divider-line" />
       </div>
 
-      <form className="auth-form" onSubmit={(e) => { e.preventDefault(); localStorage.setItem('granulate_auth', '1'); navigate('/chat'); }}>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        {formError && (
+          <p className="auth-status-message auth-status-message--error" role="alert">
+            {formError}
+          </p>
+        )}
+
         <label className="auth-field">
           <span className="auth-label">Name</span>
-          <input className="auth-input" type="text" placeholder="Your full name" autoComplete="name" />
+          <input
+            className="auth-input"
+            type="text"
+            placeholder="Your full name"
+            autoComplete="name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
         </label>
 
         <label className="auth-field">
           <span className="auth-label">Email address</span>
-          <input className="auth-input" type="email" placeholder="you@company.com" autoComplete="email" />
+          <input
+            className="auth-input"
+            type="email"
+            placeholder="you@company.com"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
         </label>
 
         <label className="auth-field">
@@ -59,6 +145,8 @@ export default function Signup() {
               type={showPassword ? 'text' : 'password'}
               placeholder="min 8 chars"
               autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
             />
             <button
               className="auth-eye-btn"
@@ -75,14 +163,19 @@ export default function Signup() {
         </label>
 
         <label className="auth-checkbox-wrap">
-          <input type="checkbox" className="auth-checkbox" />
+          <input
+            type="checkbox"
+            className="auth-checkbox"
+            checked={acceptedTerms}
+            onChange={(event) => setAcceptedTerms(event.target.checked)}
+          />
           <span className="auth-checkbox-label">
             I agree to the <a href="#">Terms & Privacy</a>
           </span>
         </label>
 
-        <button className="auth-submit" type="submit">
-          Create account
+        <button className="auth-submit" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'Creating account...' : 'Create account'}
         </button>
       </form>
     </AuthLayout>
