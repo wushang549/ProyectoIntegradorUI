@@ -12,6 +12,7 @@ export type ThemeCardExample = {
 
 type ThemeCardProps = {
   title: string
+  titleTooltip?: string
   calls: number
   clusterId: number | null
   isActive: boolean
@@ -23,6 +24,7 @@ type ThemeCardProps = {
 
 export default function ThemeCard({
   title,
+  titleTooltip,
   calls,
   clusterId,
   isActive,
@@ -41,7 +43,13 @@ export default function ThemeCard({
     >
       <div className="chat-theme-card-head">
         <div>
-          <p className="chat-card-title">{title}</p>
+          <p
+            className={`chat-card-title ${titleTooltip ? 'chat-card-title--tooltip' : ''}`}
+            title={titleTooltip}
+            aria-label={titleTooltip ? `${title}. ${titleTooltip}` : title}
+          >
+            {title}
+          </p>
           {subtitle && <p className="chat-muted-text">{subtitle}</p>}
         </div>
         <strong className="chat-theme-size chat-theme-size--fixed" style={{ color: style.accent }}>

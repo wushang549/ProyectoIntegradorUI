@@ -38,6 +38,10 @@
   overflow: hidden;
 }
 
+.chat-theme-card-head .chat-card-title--tooltip {
+  cursor: help;
+}
+
 .chat-theme-size {
   font-size: 13px;
 }

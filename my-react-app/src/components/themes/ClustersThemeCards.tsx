@@ -1,5 +1,5 @@
 import { useMemo, type KeyboardEvent } from 'react'
-import type { ClustersResponse } from '../../api/analysis.types'
+import type { ClusterLabelSource, ClustersResponse } from '../../api/analysis.types'
 import ThemeCard from '../common/ThemeCard'
 import './ThemeCards.css'
 import './ClustersThemeCards.css'
@@ -15,6 +15,23 @@ type ClustersThemeCardsProps = {
 
 function normalizeLabel(value: string) {
   return value.trim().toLowerCase()
+}
+
+function formatLabelSourceTooltip(source: ClusterLabelSource | undefined) {
+  switch (source) {
+    case 'openai':
+      return 'Label source: OpenAI'
+    case 'contextual':
+      return 'Label source: Contextual rule'
+    case 'signature':
+      return 'Label source: Signature rule'
+    case 'heuristic':
+      return 'Label source: Heuristic rule'
+    case 'fallback':
+      return 'Label source: Fallback rule'
+    default:
+      return 'Label source: Unknown'
+  }
 }
 
 export default function ClustersThemeCards({
@@ -52,6 +69,7 @@ export default function ClustersThemeCards({
           <ThemeCard
             key={cluster.cluster_id}
             title={cluster.label}
+            titleTooltip={formatLabelSourceTooltip(cluster.label_source)}
             calls={cluster.size}
             clusterId={cluster.cluster_id}
             isActive={isActive}

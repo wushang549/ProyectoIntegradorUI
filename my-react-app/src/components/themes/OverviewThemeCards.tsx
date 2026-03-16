@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { InsightsResponse, OverviewResponse } from '../../api/analysis.types'
+import type { ClusterLabelSource, InsightsResponse, OverviewResponse } from '../../api/analysis.types'
 import ThemeCard from '../common/ThemeCard'
 import './ThemeCards.css'
 
@@ -25,6 +25,23 @@ function findClusterIdByInsightLabel(overview: OverviewResponse | null, label: s
     cluster.label.trim().toLowerCase().includes(normalized)
   )
   return containsMatch?.cluster_id ?? null
+}
+
+function formatLabelSourceTooltip(source: ClusterLabelSource | undefined) {
+  switch (source) {
+    case 'openai':
+      return 'Label source: OpenAI'
+    case 'contextual':
+      return 'Label source: Contextual rule'
+    case 'signature':
+      return 'Label source: Signature rule'
+    case 'heuristic':
+      return 'Label source: Heuristic rule'
+    case 'fallback':
+      return 'Label source: Fallback rule'
+    default:
+      return 'Label source: Unknown'
+  }
 }
 
 function uniqueNonEmpty(values: string[]) {
@@ -62,12 +79,13 @@ export default function OverviewThemeCards({
   return (
     <div className="chat-theme-cards">
       {themes.map((theme, index) => {
-        const clusterId = findClusterIdByInsightLabel(overview, theme.label)
+        const clusterId = theme.cluster_id ?? findClusterIdByInsightLabel(overview, theme.label)
         const isActive = clusterId !== null && selectedClusterId === clusterId
         const insightExamples = theme.examples
+        const matchedCluster = clusterId !== null ? overviewClustersById.get(clusterId) ?? null : null
         const representativeExamples =
           clusterId !== null
-            ? (overviewClustersById.get(clusterId)?.representatives ?? []).map(
+            ? (matchedCluster?.representatives ?? []).map(
                 (representative) => representative.preview
               )
             : []
@@ -80,6 +98,7 @@ export default function OverviewThemeCards({
           <ThemeCard
             key={`overview-theme-${index}`}
             title={theme.label}
+            titleTooltip={formatLabelSourceTooltip(theme.label_source ?? matchedCluster?.label_source)}
             calls={theme.size}
             clusterId={clusterId}
             isActive={isActive}

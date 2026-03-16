@@ -1,10 +1,10 @@
 import type {
   AnalysisGranulateResponse,
-  AnalysisModelsResponse,
   AnalysisStatusResponse,
   ClustersResponse,
   CreateAnalysisRequest,
   CreateAnalysisResponse,
+  DeleteAnalysisResponse,
   HierarchyLabelsResponse,
   HierarchyResponse,
   InsightsResponse,
@@ -92,8 +92,10 @@ export async function getRecentAnalyses(limit = 10): Promise<RecentAnalysesRespo
   return requestJson<RecentAnalysesResponse>(`/analysis/recent?limit=${limit}`)
 }
 
-export async function getAnalysisModels(): Promise<AnalysisModelsResponse> {
-  return requestJson<AnalysisModelsResponse>('/analysis/models')
+export async function deleteAnalysis(analysisId: string): Promise<DeleteAnalysisResponse> {
+  return requestJson<DeleteAnalysisResponse>(`/analysis/${analysisId}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function getAnalysisStatus(analysisId: string): Promise<AnalysisStatusResponse> {

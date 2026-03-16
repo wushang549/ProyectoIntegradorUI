@@ -14,7 +14,6 @@ export type AnalysisProgressStage =
 
 export interface AnalysisOptions {
   k_clusters?: number
-  llm_model?: string
   umap_n_neighbors?: number
   umap_min_dist?: number
   granulate?: boolean
@@ -47,21 +46,16 @@ export interface CreateAnalysisResponse {
   }
 }
 
-export interface OllamaModel {
-  name: string
-  id: string
-  size: string
-  modified: string
-  is_default: boolean
-}
-
-export interface AnalysisModelsResponse {
-  default_model: string
-  models: OllamaModel[]
+export interface DeleteAnalysisResponse {
+  deleted: boolean
+  analysis_id: AnalysisId
 }
 
 export interface RecentAnalysisResponse {
   analysis_id: AnalysisId
+  display_name?: string
+  source_name?: string
+  input_type?: AnalysisInputType
   status: AnalysisState
   created_at: string
   item_count: number
@@ -110,6 +104,7 @@ export interface OverviewResponse {
   top_clusters: Array<{
     cluster_id: number
     label: string
+    label_source?: ClusterLabelSource
     size: number
     top_terms: string[]
     representatives: AnalysisRepresentative[]
@@ -119,9 +114,12 @@ export interface OverviewResponse {
 }
 
 export type OverallSummarySource = 'llm' | 'heuristic'
+export type ClusterLabelSource = 'openai' | 'contextual' | 'signature' | 'heuristic' | 'fallback' | 'unknown'
 
 export interface InsightThemeSummary {
+  cluster_id?: number
   label: string
+  label_source?: ClusterLabelSource
   size: number
   top_terms: string[]
   examples: string[]
@@ -152,6 +150,7 @@ export interface MapResponse {
   clusters: Array<{
     cluster_id: number
     label: string
+    label_source?: ClusterLabelSource
     size: number
     top_terms: string[]
     representatives: AnalysisRepresentative[]
@@ -166,6 +165,7 @@ export interface ClustersResponse {
   clusters: Array<{
     cluster_id: number
     label: string
+    label_source?: ClusterLabelSource
     size: number
     top_terms: string[]
     representatives: AnalysisRepresentative[]
