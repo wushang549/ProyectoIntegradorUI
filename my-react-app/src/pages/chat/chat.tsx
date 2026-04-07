@@ -46,6 +46,7 @@ import './chat.css'
 const ALLOWED_FILE_EXTENSIONS = ['.csv', '.xlsx', '.pdf'] as const
 const FILE_INPUT_ACCEPT =
   '.csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 const POLL_INTERVAL_MS = 1500
 const POLL_TIMEOUT_MS = 600000
 const ARTIFACT_TIMEOUT_MS = 600000
@@ -553,7 +554,11 @@ export default function Chat() {
   const validateFile = useCallback((file: File): boolean => {
     const extension = getFileExtension(file.name)
     if (!ALLOWED_FILE_EXTENSIONS.includes(extension as (typeof ALLOWED_FILE_EXTENSIONS)[number])) {
-      setFileError('Upload a CSV, XLSX, or PDF file.')
+      setFileError('Unsupported file type. Please upload CSV, XLSX, or PDF.')
+      return false
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setFileError('File is too large. Maximum size is 50MB.')
       return false
     }
     setFileError('')
@@ -574,11 +579,6 @@ export default function Chat() {
     },
     [validateFile]
   )
-
-  const clearSelectedFile = useCallback(() => {
-    setSelectedFile(null)
-    setFileError('')
-  }, [])
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -959,6 +959,8 @@ export default function Chat() {
   const activeError = requestError || runError
   const isDrawerVisible = viewMode === 'analysis' && Boolean(selectedEntity)
   const recentList = Array.isArray(recentAnalyses) ? recentAnalyses : []
+  const hasCompletedAnalysis =
+    !isRunning && !isLoadingArtifacts && !activeError && (status?.status === 'completed' || Object.values(artifacts).some(Boolean))
 
   return (
     <div className="chat-page">
@@ -1020,51 +1022,72 @@ export default function Chat() {
 
                 <div className="chat-upload-card">
                   <div className="chat-upload-dropzone">
-                    <p className="chat-upload-dropzone-title">Add a CSV, XLSX, or PDF to start analysis.</p>
-                    <p className="chat-upload-dropzone-copy">or browse from your device</p>
-                    <button
-                      type="button"
-                      className="chat-primary-btn"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openFilePicker()
-                      }}
-                      disabled={isRunning || isLoadingArtifacts}
-                    >
-                      Choose file
-                    </button>
+                    {!selectedFile ? (
+                      <>
+                        <span className="chat-upload-icon" aria-hidden>
+                          <UploadCardIcon />
+                        </span>
+                        <div className="chat-upload-copy-block">
+                          <h3 className="chat-card-title">Upload your dataset</h3>
+                          <p className="chat-upload-dropzone-title">Add a CSV, XLSX, or PDF to start analysis</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="chat-primary-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openFilePicker()
+                          }}
+                          disabled={isRunning || isLoadingArtifacts}
+                        >
+                          Select file
+                        </button>
+                        <p className="chat-upload-dropzone-copy">or drag and drop</p>
+                        <div className="chat-upload-helper-block">
+                          <p className="chat-upload-helper">Max file size: 50GB</p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="chat-selected-file-state" role="status">
+                        <div className="chat-selected-file-state-head">
+                          <span className="chat-file-status-badge">
+                            <span className="chat-file-status-badge-icon" aria-hidden>
+                              <UploadSuccessIcon />
+                            </span>
+                            <span>File uploaded</span>
+                          </span>
+                          <div className="chat-selected-file-row">
+                            <span className="chat-selected-file-icon" aria-hidden>
+                              <FileDocumentIcon />
+                            </span>
+                            <div className="chat-selected-file-meta">
+                              <span className="chat-selected-file-name">{selectedFile.name}</span>
+                              <span className="chat-selected-file-size">{formatFileSize(selectedFile.size)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="chat-upload-actions">
+                          <button
+                            type="button"
+                            className="chat-plain-btn"
+                            onClick={openFilePicker}
+                            disabled={isRunning || isLoadingArtifacts}
+                          >
+                            Replace file
+                          </button>
+                          <button
+                            type="button"
+                            className="chat-primary-btn"
+                            onClick={submitUploadForAnalysis}
+                            disabled={isRunning || isLoadingArtifacts}
+                          >
+                            Start analysis
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {selectedFile && (
-                  <div className="chat-selected-file" role="status">
-                    <div className="chat-selected-file-meta">
-                      <span className="chat-selected-file-name">{selectedFile.name}</span>
-                      <span className="chat-selected-file-size">{formatFileSize(selectedFile.size)}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="chat-plain-btn"
-                      onClick={clearSelectedFile}
-                      disabled={isRunning || isLoadingArtifacts}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-
-                {selectedFile && !isRunning && !isLoadingArtifacts && (
-                  <div className="chat-upload-actions">
-                    <button
-                      type="button"
-                      className="chat-primary-btn"
-                      onClick={submitUploadForAnalysis}
-                      disabled={isRunning || isLoadingArtifacts}
-                    >
-                      Start analysis
-                    </button>
-                  </div>
-                )}
 
                 {(isRunning || isLoadingArtifacts) && (
                   <div className="chat-run-status" role="status" aria-live="polite">
@@ -1087,10 +1110,20 @@ export default function Chat() {
                   </div>
                 )}
 
-                {!isRunning && !isLoadingArtifacts && hasAnalysisData && (
-                  <p className="chat-run-status" role="status">
-                    Analysis ready. Open <strong>Analysis</strong> to review themes, the map, and the hierarchy.
-                  </p>
+                {hasCompletedAnalysis && (
+                  <div className="chat-analysis-ready-card" role="status">
+                    <div className="chat-analysis-ready-copy">
+                      <h3 className="chat-card-title">Analysis ready</h3>
+                      <p className="chat-muted-text">Open analysis to explore themes, map, and hierarchy</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="chat-primary-btn"
+                      onClick={() => setViewMode('analysis')}
+                    >
+                      Open analysis <span aria-hidden>&rarr;</span>
+                    </button>
+                  </div>
                 )}
 
                 {fileError && (
@@ -1314,6 +1347,63 @@ function ChatIconTrash() {
       <path d="M19 6l-1 14H6L5 6" />
       <path d="M10 11v6" />
       <path d="M14 11v6" />
+    </svg>
+  )
+}
+
+function UploadCardIcon() {
+  return (
+    <svg
+      width="32"
+      height="32"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 16V6" />
+      <path d="M8.5 9.5 12 6l3.5 3.5" />
+      <path d="M4 17.5v.5A2 2 0 0 0 6 20h12a2 2 0 0 0 2-2v-.5" />
+      <path d="M8 20h8" />
+    </svg>
+  )
+}
+
+function UploadSuccessIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  )
+}
+
+function FileDocumentIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6" />
+      <path d="M9 17h4" />
     </svg>
   )
 }
