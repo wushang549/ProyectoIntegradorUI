@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import granulateLogo from '../../assets/granulate-logo-new.png'
 import {
   ApiError,
+  chatWithAnalysis,
   deleteAnalysis,
   getAnalysisClusters,
   getAnalysisHierarchy,
@@ -14,6 +15,7 @@ import {
   wait,
 } from '../../api/analysis.client'
 import type {
+  AnalysisChatMessage,
   AnalysisStatusResponse,
   ClustersResponse,
   HierarchyResponse,
@@ -38,6 +40,7 @@ import SelectionDetailsDrawer, {
   type SelectedEntityModel,
 } from './components/SelectionDetailsDrawer'
 import ClustersTab from '../../tabs/ClustersTab'
+import ChatTab from '../../tabs/ChatTab'
 import HierarchyTab from '../../tabs/HierarchyTab'
 import MapTab from '../../tabs/MapTab'
 import OverviewTab from '../../tabs/OverviewTab'
@@ -543,6 +546,9 @@ export default function Chat() {
   const [activeSection, setActiveSection] = useState<AnalysisSectionId>('overview')
   const [selection, setSelection] = useState(createInitialAnalysisSelectionState)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [analysisChatMessages, setAnalysisChatMessages] = useState<AnalysisChatMessage[]>([])
+  const [isSubmittingChat, setIsSubmittingChat] = useState(false)
+  const [analysisChatError, setAnalysisChatError] = useState('')
 
   const { analysisId, status, isRunning, error: runError, startAnalysis, resetRun } = useAnalysisRun({
     intervalMs: POLL_INTERVAL_MS,
@@ -609,6 +615,12 @@ export default function Chat() {
     }
   }, [analysisId])
 
+  useEffect(() => {
+    setAnalysisChatMessages([])
+    setIsSubmittingChat(false)
+    setAnalysisChatError('')
+  }, [currentAnalysisId])
+
   const loadRecentAnalyses = useCallback(async () => {
     setIsLoadingRecent(true)
     try {
@@ -671,6 +683,7 @@ export default function Chat() {
       if (!analysisIdToOpen) return
       resetRun()
       setRequestError('')
+      setAnalysisChatError('')
       setSelectedFile(null)
       setSelection(createInitialAnalysisSelectionState())
       setActiveSection('overview')
@@ -778,6 +791,17 @@ export default function Chat() {
     return currentAnalysisId !== null || Object.values(artifacts).some(Boolean)
   }, [artifacts, currentAnalysisId])
 
+  const hasChatContext = useMemo(() => {
+    return Boolean(
+      currentAnalysisId &&
+        artifacts.overview &&
+        artifacts.insights &&
+        artifacts.map &&
+        artifacts.clusters &&
+        artifacts.hierarchy
+    )
+  }, [artifacts.clusters, artifacts.hierarchy, artifacts.insights, artifacts.map, artifacts.overview, currentAnalysisId])
+
   const selectedClusterId = selection.selectedClusterId
   const selectedPointId = selection.selectedPointId
   const selectedNodeId = selection.selectedNodeId
@@ -801,6 +825,45 @@ export default function Chat() {
     setSelection((prev) => clearAnalysisSelection(prev))
     setIsDrawerOpen(false)
   }, [])
+
+  const sendAnalysisChatMessage = useCallback(
+    async (content: string) => {
+      const trimmed = content.trim()
+      if (!trimmed || !currentAnalysisId || !hasChatContext || isSubmittingChat) return
+
+      const nextMessages: AnalysisChatMessage[] = [...analysisChatMessages, { role: 'user', content: trimmed }]
+      setAnalysisChatMessages(nextMessages)
+      setIsSubmittingChat(true)
+      setAnalysisChatError('')
+
+      try {
+        const response = await chatWithAnalysis(currentAnalysisId, {
+          messages: nextMessages,
+          selection: {
+            selectedClusterId: selectedClusterId ?? null,
+            selectedPointId: selectedPointId ?? null,
+            selectedNodeId: selectedNodeId ?? null,
+          },
+        })
+
+        setAnalysisChatMessages((prev) => [...prev, { role: 'assistant', content: response.answer }])
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to get an answer for this analysis.'
+        setAnalysisChatError(message)
+      } finally {
+        setIsSubmittingChat(false)
+      }
+    },
+    [
+      analysisChatMessages,
+      currentAnalysisId,
+      hasChatContext,
+      isSubmittingChat,
+      selectedClusterId,
+      selectedNodeId,
+      selectedPointId,
+    ]
+  )
 
   const descendantLeafIdsByNode = useMemo(
     () => buildDescendantLeafIdsByNode(artifacts.hierarchy),
@@ -1298,6 +1361,19 @@ export default function Chat() {
                     isLoading={isRunning || isLoadingArtifacts}
                     error={activeError}
                     onRetry={retryCurrentAnalysis}
+                  />
+                )}
+
+                {activeSection === 'chat' && (
+                  <ChatTab
+                    analysisId={currentAnalysisId}
+                    messages={analysisChatMessages}
+                    isLoading={isRunning || isLoadingArtifacts || !hasChatContext}
+                    isSending={isSubmittingChat}
+                    error={analysisChatError}
+                    onSendMessage={(message) => {
+                      void sendAnalysisChatMessage(message)
+                    }}
                   />
                 )}
               </div>

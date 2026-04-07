@@ -42,6 +42,7 @@ export interface CreateAnalysisResponse {
     granulate: string
     hierarchy: string
     insights: string
+    chat: string
     status: string
   }
 }
@@ -289,4 +290,32 @@ export interface HierarchyResponse {
 export interface HierarchyLabelsResponse {
   labels: Record<string, string>
   updated: number
+}
+
+export type AnalysisChatRole = 'user' | 'assistant'
+
+export interface AnalysisChatMessage {
+  role: AnalysisChatRole
+  content: string
+}
+
+export interface AnalysisChatSelectionContext {
+  selectedClusterId?: number | null
+  selectedPointId?: string | null
+  selectedNodeId?: string | null
+}
+
+export interface AnalysisChatRequest {
+  messages: AnalysisChatMessage[]
+  selection?: AnalysisChatSelectionContext
+}
+
+export interface AnalysisChatResponse {
+  answer: string
+  model: string
+  grounding: {
+    analysis_id: string
+    sections: string[]
+    selection_applied: boolean
+  }
 }

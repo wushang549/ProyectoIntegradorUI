@@ -1,4 +1,6 @@
 import type {
+  AnalysisChatRequest,
+  AnalysisChatResponse,
   AnalysisGranulateResponse,
   AnalysisStatusResponse,
   ClustersResponse,
@@ -150,6 +152,28 @@ export async function labelAnalysisHierarchyNodes(
     },
     body: JSON.stringify({
       node_ids: nodeIds,
+    }),
+  })
+}
+
+export async function chatWithAnalysis(
+  analysisId: string,
+  payload: AnalysisChatRequest
+): Promise<AnalysisChatResponse> {
+  return requestJson<AnalysisChatResponse>(`/analysis/${analysisId}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messages: payload.messages,
+      selection: payload.selection
+        ? {
+            selected_cluster_id: payload.selection.selectedClusterId ?? null,
+            selected_point_id: payload.selection.selectedPointId ?? null,
+            selected_node_id: payload.selection.selectedNodeId ?? null,
+          }
+        : undefined,
     }),
   })
 }
