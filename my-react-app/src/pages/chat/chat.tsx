@@ -43,12 +43,14 @@ import MapTab from '../../tabs/MapTab'
 import OverviewTab from '../../tabs/OverviewTab'
 import './chat.css'
 
-const ALLOWED_TYPES = ['.csv']
+const ALLOWED_FILE_EXTENSIONS = ['.csv', '.xlsx', '.pdf'] as const
+const FILE_INPUT_ACCEPT =
+  '.csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const POLL_INTERVAL_MS = 1500
 const POLL_TIMEOUT_MS = 600000
 const ARTIFACT_TIMEOUT_MS = 600000
 
-type ViewMode = 'chat' | 'analysis'
+type ViewMode = 'ingestion' | 'analysis'
 
 export type GranulateGranule = {
   aspect: string
@@ -191,56 +193,16 @@ function formatRawStageLabel(rawStage: string) {
   return normalized.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
-/* Dots arranged in concentric rings to form a circle */
-const ORB_DOT_POSITIONS = (() => {
-  const positions: { x: number; y: number }[] = []
-  const rings = [
-    { r: 0, count: 1 },
-    { r: 0.22, count: 6 },
-    { r: 0.42, count: 12 },
-    { r: 0.62, count: 18 },
-    { r: 0.85, count: 12 },
-  ]
-  rings.forEach(({ r, count }) => {
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * 2 * Math.PI - Math.PI / 2
-      positions.push({
-        x: 50 + r * 45 * Math.cos(angle),
-        y: 50 + r * 45 * Math.sin(angle),
-      })
-    }
-  })
-  return positions
-})()
-
-function getGreeting() {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'Good Morning'
-  if (hour < 18) return 'Good Afternoon'
-  return 'Good Evening'
+function getFileExtension(filename: string) {
+  return filename.slice(Math.max(0, filename.lastIndexOf('.'))).toLowerCase()
 }
 
-const ORB_SIZE = 80
-const REPULSE_RADIUS = 38
-const REPULSE_MAX_PX = 14
-
-function getRepulsion(
-  dotXPercent: number,
-  dotYPercent: number,
-  mouseX: number,
-  mouseY: number
-): { x: number; y: number } {
-  const dotX = (dotXPercent / 100) * ORB_SIZE
-  const dotY = (dotYPercent / 100) * ORB_SIZE
-  const dx = dotX - mouseX
-  const dy = dotY - mouseY
-  const d = Math.sqrt(dx * dx + dy * dy)
-  if (d >= REPULSE_RADIUS || d < 1) return { x: 0, y: 0 }
-  const magnitude = ((REPULSE_RADIUS - d) / REPULSE_RADIUS) * REPULSE_MAX_PX
-  return {
-    x: (dx / d) * magnitude,
-    y: (dy / d) * magnitude,
+function formatFileSize(size: number) {
+  if (!Number.isFinite(size) || size <= 0) return '0 KB'
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))} KB`
   }
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
 async function with409Retry<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
@@ -562,9 +524,8 @@ function buildSelectedEntityModel({
 }
 
 export default function Chat() {
-  const [query, setQuery] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('chat')
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const [viewMode, setViewMode] = useState<ViewMode>('ingestion')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [fileError, setFileError] = useState('')
   const [requestError, setRequestError] = useState('')
@@ -588,41 +549,25 @@ export default function Chat() {
   })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const queryInputRef = useRef<HTMLTextAreaElement>(null)
-  const orbRef = useRef<HTMLDivElement>(null)
-  const [mouseInOrb, setMouseInOrb] = useState<{ x: number; y: number } | null>(null)
-
-  const handleOrbMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = orbRef.current?.getBoundingClientRect()
-    if (!rect) return
-    setMouseInOrb({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    })
-  }, [])
-
-  const handleOrbMouseLeave = useCallback(() => {
-    setMouseInOrb(null)
-  }, [])
 
   const validateFile = useCallback((file: File): boolean => {
-    const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase()
-    if (!ALLOWED_TYPES.includes(ext)) {
-      setFileError(`Only ${ALLOWED_TYPES.join(', ')} are allowed.`)
+    const extension = getFileExtension(file.name)
+    if (!ALLOWED_FILE_EXTENSIONS.includes(extension as (typeof ALLOWED_FILE_EXTENSIONS)[number])) {
+      setFileError('Upload a CSV, XLSX, or PDF file.')
       return false
     }
     setFileError('')
     return true
   }, [])
 
-  const addFiles = useCallback(
+  const handleSelectedFiles = useCallback(
     (files: FileList | null) => {
       if (!files?.length) return
 
       for (let i = 0; i < files.length; i++) {
         const candidate = files[i]
         if (validateFile(candidate)) {
-          setAttachedFiles([candidate])
+          setSelectedFile(candidate)
           return
         }
       }
@@ -630,8 +575,8 @@ export default function Chat() {
     [validateFile]
   )
 
-  const removeFile = useCallback(() => {
-    setAttachedFiles([])
+  const clearSelectedFile = useCallback(() => {
+    setSelectedFile(null)
     setFileError('')
   }, [])
 
@@ -639,9 +584,9 @@ export default function Chat() {
     (e: React.DragEvent) => {
       e.preventDefault()
       setIsDragging(false)
-      addFiles(e.dataTransfer.files)
+      handleSelectedFiles(e.dataTransfer.files)
     },
-    [addFiles]
+    [handleSelectedFiles]
   )
 
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -654,20 +599,9 @@ export default function Chat() {
     setIsDragging(false)
   }, [])
 
-  const onAttachClick = useCallback(() => {
+  const openFilePicker = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
-
-  const autoResize = useCallback((textarea: HTMLTextAreaElement | null) => {
-    if (!textarea) return
-    textarea.style.height = 'auto'
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 300)}px`
-    textarea.style.overflowY = textarea.scrollHeight > 300 ? 'auto' : 'hidden'
-  }, [])
-
-  useEffect(() => {
-    autoResize(queryInputRef.current)
-  }, [autoResize, query])
 
   useEffect(() => {
     if (analysisId) {
@@ -724,11 +658,12 @@ export default function Chat() {
     resetRun()
     setRequestError('')
     setCurrentAnalysisId(null)
+    setSelectedFile(null)
     setArtifacts(createEmptyArtifacts())
     setSelection(createInitialAnalysisSelectionState())
     setActiveSection('overview')
     setIsDrawerOpen(false)
-    setViewMode('chat')
+    setViewMode('ingestion')
   }, [resetRun])
 
   const openRecentAnalysis = useCallback(
@@ -736,6 +671,7 @@ export default function Chat() {
       if (!analysisIdToOpen) return
       resetRun()
       setRequestError('')
+      setSelectedFile(null)
       setSelection(createInitialAnalysisSelectionState())
       setActiveSection('overview')
       setIsDrawerOpen(false)
@@ -780,17 +716,21 @@ export default function Chat() {
     [clearCurrentAnalysisView, currentAnalysisId, loadRecentAnalyses]
   )
 
-  const runProjectFlow = useCallback(async () => {
+  const submitUploadForAnalysis = useCallback(async () => {
     if (isRunning || isLoadingArtifacts) return
 
     setRequestError('')
     setFileError('')
 
-    const file = attachedFiles[0]
-    const text = query.trim()
+    const file = selectedFile
 
-    if (!file && !text) {
-      setFileError('Please attach a CSV file or enter text to analyze.')
+    if (!file) {
+      setFileError('Choose a CSV, XLSX, or PDF file to start analysis.')
+      return
+    }
+
+    if (getFileExtension(file.name) !== '.csv') {
+      setRequestError('CSV analysis is fully connected today. XLSX and PDF uploads will need backend ingestion support before they can run.')
       return
     }
 
@@ -798,7 +738,7 @@ export default function Chat() {
     setSelection(createInitialAnalysisSelectionState())
     setActiveSection('overview')
     setIsDrawerOpen(false)
-    setViewMode('chat')
+    setViewMode('ingestion')
     resetRun()
     setDisplayProgress(0)
     setStageStartedAt(Date.now())
@@ -806,11 +746,11 @@ export default function Chat() {
 
     try {
       const nextAnalysisId = await startAnalysis({
-        inputType: file ? 'csv' : 'text',
-        file: file ?? undefined,
-        text: file ? undefined : text,
+        inputType: 'csv',
+        file,
       })
 
+      setSelectedFile(null)
       setCurrentAnalysisId(nextAnalysisId)
       setViewMode('analysis')
       await loadArtifacts(nextAnalysisId)
@@ -820,13 +760,12 @@ export default function Chat() {
       setRequestError(message)
     }
   }, [
-    attachedFiles,
     isLoadingArtifacts,
     isRunning,
     loadArtifacts,
     loadRecentAnalyses,
-    query,
     resetRun,
+    selectedFile,
     startAnalysis,
   ])
 
@@ -1030,68 +969,39 @@ export default function Chat() {
             <span className="chat-header-title">Granulate Analysis</span>
           </Link>
 
-          {hasAnalysisData && (
-            <div className="chat-view-segmented" role="tablist" aria-label="View mode">
-              <button
-                type="button"
-                role="tab"
-                className={`chat-view-segment ${viewMode === 'chat' ? 'chat-view-segment--active' : ''}`}
-                onClick={() => setViewMode('chat')}
-                aria-selected={viewMode === 'chat'}
-              >
-                Chat
-              </button>
-              <button
-                type="button"
-                role="tab"
-                className={`chat-view-segment ${viewMode === 'analysis' ? 'chat-view-segment--active' : ''}`}
-                onClick={() => setViewMode('analysis')}
-                aria-selected={viewMode === 'analysis'}
-              >
-                Analysis
-              </button>
-            </div>
-          )}
+          <div className="chat-view-segmented" role="tablist" aria-label="View mode">
+            <button
+              type="button"
+              role="tab"
+              className={`chat-view-segment ${viewMode === 'ingestion' ? 'chat-view-segment--active' : ''}`}
+              onClick={() => setViewMode('ingestion')}
+              aria-selected={viewMode === 'ingestion'}
+            >
+              Input
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={`chat-view-segment ${viewMode === 'analysis' ? 'chat-view-segment--active' : ''}`}
+              onClick={() => setViewMode('analysis')}
+              aria-selected={viewMode === 'analysis'}
+              disabled={!hasAnalysisData}
+            >
+              Analysis
+            </button>
+          </div>
         </header>
 
         <main className="chat-content">
-          {(!hasAnalysisData || viewMode === 'chat') && (
+          {(!hasAnalysisData || viewMode === 'ingestion') && (
             <>
               <div className="chat-greeting-wrap">
-                <div
-                  ref={orbRef}
-                  className="chat-greeting-orb"
-                  aria-hidden
-                  onMouseMove={handleOrbMouseMove}
-                  onMouseLeave={handleOrbMouseLeave}
-                >
-                  {ORB_DOT_POSITIONS.map((pos, i) => {
-                    const repulse = mouseInOrb ? getRepulsion(pos.x, pos.y, mouseInOrb.x, mouseInOrb.y) : { x: 0, y: 0 }
-                    return (
-                      <span
-                        key={i}
-                        className="chat-orb-dot-wrapper"
-                        style={{
-                          left: `${pos.x}%`,
-                          top: `${pos.y}%`,
-                          transform: `translate(-50%, -50%) translate(${repulse.x}px, ${repulse.y}px)`,
-                        }}
-                      >
-                        <span className="chat-orb-dot" style={{ animationDelay: `${i * 0.04}s` }} />
-                      </span>
-                    )
-                  })}
-                </div>
-                <p className="chat-greeting">
-                  {getGreeting()}, <span className="chat-greeting-name">there</span>
-                </p>
-                <h2 className="chat-headline">
-                  Analyze your data in <em className="chat-headline-accent">one place</em>
-                </h2>
+                <p className="chat-kicker">Data ingestion</p>
+                <h2 className="chat-headline">Upload data for analysis</h2>
               </div>
 
               <section
-                className={`chat-input-wrap ${isDragging ? 'chat-input-wrap--dragging' : ''}`}
+                className={`chat-upload-panel ${isDragging ? 'chat-upload-panel--dragging' : ''}`}
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 onDragLeave={onDragLeave}
@@ -1099,54 +1009,62 @@ export default function Chat() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,text/csv"
+                  accept={FILE_INPUT_ACCEPT}
                   className="chat-file-input"
-                  aria-label="Attach CSV file"
+                  aria-label="Upload data file"
                   onChange={(e) => {
-                    addFiles(e.target.files)
+                    handleSelectedFiles(e.target.files)
                     e.target.value = ''
                   }}
                 />
-                <div className="chat-input-box">
-                  <span className="chat-input-icon" aria-hidden>
-                    <ChatIconSpark />
-                  </span>
-                  <textarea
-                    ref={queryInputRef}
-                    className="chat-input chat-input-textarea"
-                    placeholder="Paste text directly or attach a CSV file"
-                    value={query}
-                    onChange={(e) => {
-                      setQuery(e.target.value)
-                      autoResize(e.currentTarget)
-                    }}
-                    aria-label="Analysis input text"
-                    rows={1}
-                  />
+
+                <div className="chat-upload-card">
+                  <div className="chat-upload-dropzone">
+                    <p className="chat-upload-dropzone-title">Add a CSV, XLSX, or PDF to start analysis.</p>
+                    <p className="chat-upload-dropzone-copy">or browse from your device</p>
+                    <button
+                      type="button"
+                      className="chat-primary-btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openFilePicker()
+                      }}
+                      disabled={isRunning || isLoadingArtifacts}
+                    >
+                      Choose file
+                    </button>
+                  </div>
                 </div>
 
-                <div className="chat-input-toolbar">
-                  <button
-                    type="button"
-                    className="chat-toolbar-btn"
-                    onClick={onAttachClick}
-                    aria-label="Attach CSV"
-                    disabled={isRunning || isLoadingArtifacts}
-                  >
-                    <ChatIconAttach />
-                    <span>Attach CSV</span>
-                  </button>
-                  <span className="chat-toolbar-hint">CSV file or plain text</span>
-                  <button
-                    type="button"
-                    className="chat-send-btn"
-                    aria-label="Run analysis"
-                    onClick={runProjectFlow}
-                    disabled={isRunning || isLoadingArtifacts}
-                  >
-                    <ChatIconSend />
-                  </button>
-                </div>
+                {selectedFile && (
+                  <div className="chat-selected-file" role="status">
+                    <div className="chat-selected-file-meta">
+                      <span className="chat-selected-file-name">{selectedFile.name}</span>
+                      <span className="chat-selected-file-size">{formatFileSize(selectedFile.size)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="chat-plain-btn"
+                      onClick={clearSelectedFile}
+                      disabled={isRunning || isLoadingArtifacts}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+
+                {selectedFile && !isRunning && !isLoadingArtifacts && (
+                  <div className="chat-upload-actions">
+                    <button
+                      type="button"
+                      className="chat-primary-btn"
+                      onClick={submitUploadForAnalysis}
+                      disabled={isRunning || isLoadingArtifacts}
+                    >
+                      Start analysis
+                    </button>
+                  </div>
+                )}
 
                 {(isRunning || isLoadingArtifacts) && (
                   <div className="chat-run-status" role="status" aria-live="polite">
@@ -1171,27 +1089,8 @@ export default function Chat() {
 
                 {!isRunning && !isLoadingArtifacts && hasAnalysisData && (
                   <p className="chat-run-status" role="status">
-                    Analysis ready. Open <strong>Analysis</strong> to explore themes, map, and tree.
+                    Analysis ready. Open <strong>Analysis</strong> to review themes, the map, and the hierarchy.
                   </p>
-                )}
-
-                {attachedFiles.length > 0 && (
-                  <div className="chat-attached-list">
-                    {attachedFiles.map((f) => (
-                      <span key={f.name} className="chat-attached-tag">
-                        {f.name}
-                        <button
-                          type="button"
-                          className="chat-attached-remove"
-                          onClick={removeFile}
-                          aria-label={`Remove ${f.name}`}
-                          disabled={isRunning || isLoadingArtifacts}
-                        >
-                          x
-                        </button>
-                      </span>
-                    ))}
-                  </div>
                 )}
 
                 {fileError && (
@@ -1394,60 +1293,6 @@ export default function Chat() {
         </>
       )}
     </div>
-  )
-}
-
-function ChatIconSpark() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z" />
-      <path d="M5 14l1 2.3L8.3 17 6 18l-1 2.3L4 18l-2.3-1L4 16.3 5 14z" />
-      <path d="M19 14l1 2.3 2.3.7-2.3 1-1 2.3-1-2.3-2.3-1 2.3-.7 1-2.3z" />
-    </svg>
-  )
-}
-
-function ChatIconAttach() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21.44 11.05l-8.49 8.49a6 6 0 01-8.49-8.49l8.49-8.49a4 4 0 015.66 5.66l-8.5 8.48a2 2 0 01-2.82-2.82l7.78-7.78" />
-    </svg>
-  )
-}
-
-function ChatIconSend() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="22" y1="2" x2="11" y2="13" />
-      <polygon points="22 2 15 22 11 13 2 9 22 2" />
-    </svg>
   )
 }
 
