@@ -14,10 +14,8 @@ import type {
   OverviewResponse,
   RecentAnalysesResponse,
 } from './analysis.types'
+import { apiConfigError, buildApiUrl } from './apiBase'
 import { supabase } from '../auth/supabaseClient'
-
-const apiBaseOrigin = import.meta.env.VITE_API_BASE_URL?.toString().trim() || 'http://127.0.0.1:8000'
-const API_BASE_URL = `${apiBaseOrigin.replace(/\/+$/, '')}/v1`
 
 export class ApiError extends Error {
   status: number
@@ -46,6 +44,10 @@ async function parseErrorMessage(res: Response): Promise<string> {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  if (apiConfigError) {
+    throw new ApiError(500, apiConfigError)
+  }
+
   const headers = new Headers(init?.headers)
 
   if (supabase && !headers.has('Authorization')) {
@@ -58,7 +60,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     }
   }
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(buildApiUrl(`/v1${path}`), {
     ...init,
     headers,
   })

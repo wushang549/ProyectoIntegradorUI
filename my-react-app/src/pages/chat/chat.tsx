@@ -46,9 +46,8 @@ import MapTab from '../../tabs/MapTab'
 import OverviewTab from '../../tabs/OverviewTab'
 import './chat.css'
 
-const ALLOWED_FILE_EXTENSIONS = ['.csv', '.xlsx', '.pdf'] as const
-const FILE_INPUT_ACCEPT =
-  '.csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const ALLOWED_FILE_EXTENSIONS = ['.csv'] as const
+const FILE_INPUT_ACCEPT = '.csv,text/csv'
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 const POLL_INTERVAL_MS = 1500
 const POLL_TIMEOUT_MS = 600000
@@ -560,7 +559,7 @@ export default function Chat() {
   const validateFile = useCallback((file: File): boolean => {
     const extension = getFileExtension(file.name)
     if (!ALLOWED_FILE_EXTENSIONS.includes(extension as (typeof ALLOWED_FILE_EXTENSIONS)[number])) {
-      setFileError('Unsupported file type. Please upload CSV, XLSX, or PDF.')
+      setFileError('Unsupported file type. Please upload a CSV file.')
       return false
     }
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -738,12 +737,7 @@ export default function Chat() {
     const file = selectedFile
 
     if (!file) {
-      setFileError('Choose a CSV, XLSX, or PDF file to start analysis.')
-      return
-    }
-
-    if (getFileExtension(file.name) !== '.csv') {
-      setRequestError('CSV analysis is fully connected today. XLSX and PDF uploads will need backend ingestion support before they can run.')
+      setFileError('Choose a CSV file to start analysis.')
       return
     }
 
@@ -1092,7 +1086,7 @@ export default function Chat() {
                         </span>
                         <div className="chat-upload-copy-block">
                           <h3 className="chat-card-title">Upload your dataset</h3>
-                          <p className="chat-upload-dropzone-title">Add a CSV, XLSX, or PDF to start analysis</p>
+                          <p className="chat-upload-dropzone-title">Add a CSV file to start analysis</p>
                         </div>
                         <button
                           type="button"
@@ -1107,7 +1101,7 @@ export default function Chat() {
                         </button>
                         <p className="chat-upload-dropzone-copy">or drag and drop</p>
                         <div className="chat-upload-helper-block">
-                          <p className="chat-upload-helper">Max file size: 50GB</p>
+                          <p className="chat-upload-helper">Max file size: 50MB</p>
                         </div>
                       </>
                     ) : (

@@ -9,7 +9,7 @@ const supabasePublishableKey =
 export const supabaseConfigError =
   supabaseUrl && supabasePublishableKey
     ? null
-    : 'Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY in ProyectoIntegradorUI/my-react-app/.env.local.'
+    : 'Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY in the frontend environment.'
 
 export const supabase = supabaseConfigError
   ? null

@@ -1,5 +1,11 @@
+import { apiConfigError, buildApiUrl } from './apiBase'
+
 export async function granulateRequest(text: string, minSimilarity: number) {
-  const res = await fetch('/v1/granulate', {
+  if (apiConfigError) {
+    throw new Error(apiConfigError)
+  }
+
+  const res = await fetch(buildApiUrl('/v1/granulate'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
