@@ -1,6 +1,6 @@
 import { Layers, Loader2, Lock, Sparkles } from 'lucide-react'
 import type { AnalysisResults, LoadingStep } from '../types'
-import './AnalysisOutput.css'
+import './analysisOutput.css'
 
 type Props = {
   isLoading: boolean

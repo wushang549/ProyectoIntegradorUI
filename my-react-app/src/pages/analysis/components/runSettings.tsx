@@ -1,6 +1,6 @@
 import { Layers } from 'lucide-react'
 import type { Granularity } from '../types'
-import './RunSettings.css'
+import './runSettings.css'
 
 type Props = {
   granularity: Granularity

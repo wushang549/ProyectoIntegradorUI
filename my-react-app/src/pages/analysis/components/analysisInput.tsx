@@ -1,5 +1,5 @@
 import { FileText } from 'lucide-react'
-import './AnalysisInput.css'
+import './analysisInput.css'
 
 type Props = {
   inputText: string

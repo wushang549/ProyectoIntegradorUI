@@ -1,5 +1,5 @@
 import { Loader2, Play, RotateCcw } from 'lucide-react'
-import './AnalysisHeader.css'
+import './analysisHeader.css'
 import logo from '../../../assets/logo.svg'
 
 type Props = {
